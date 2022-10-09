@@ -62,3 +62,6 @@ test/fuzz/**/*.zip
 *.pdf
 *.gz
 *.dvi
+
+# Rust
+mempool/v0/ffi/target/
