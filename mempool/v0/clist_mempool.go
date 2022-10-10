@@ -13,6 +13,7 @@ import (
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/mempool/v0/ffi"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -59,6 +60,8 @@ type CListMempool struct {
 
 	logger  log.Logger
 	metrics *mempool.Metrics
+
+	rsMempool *ffi.CListMempool
 }
 
 var _ mempool.Mempool = &CListMempool{}
@@ -84,6 +87,7 @@ func NewCListMempool(
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
+		rsMempool:     ffi.NewCListMempool(cfg, height),
 	}
 
 	if cfg.CacheSize > 0 {
