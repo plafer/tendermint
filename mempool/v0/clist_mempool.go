@@ -41,6 +41,9 @@ type CListMempool struct {
 	preCheck  mempool.PreCheckFunc
 	postCheck mempool.PostCheckFunc
 
+	// Mutex that protect `Size()`
+	sizeMtx tmsync.RWMutex
+
 	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
 
@@ -146,8 +149,8 @@ func (mem *CListMempool) Unlock() {
 
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) Size() int {
-	mem.updateMtx.RLock()
-	defer mem.updateMtx.RUnlock()
+	mem.sizeMtx.RLock()
+	defer mem.sizeMtx.RUnlock()
 
 	return mem.rsMempool.Size()
 }
