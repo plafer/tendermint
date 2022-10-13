@@ -41,7 +41,8 @@ type CListMempool struct {
 	preCheck  mempool.PreCheckFunc
 	postCheck mempool.PostCheckFunc
 
-	// Mutex that protect `Size()`
+	// Mutex to protect `Size()` and `SizeBytes()`
+	// FIXME: find a better solution (e.g. atomics in Rust?)
 	sizeMtx tmsync.RWMutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
@@ -157,7 +158,10 @@ func (mem *CListMempool) Size() int {
 
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) SizeBytes() int64 {
-	return atomic.LoadInt64(&mem.txsBytes)
+	mem.sizeMtx.RLock()
+	defer mem.sizeMtx.RUnlock()
+
+	return mem.rsMempool.SizeBytes()
 }
 
 // Lock() must be help by the caller during execution.

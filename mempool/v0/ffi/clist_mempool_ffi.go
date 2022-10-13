@@ -23,7 +23,13 @@ func NewCListMempool(
 }
 
 func (m CListMempool) Size() int {
+	// Not sure if this is the best way to convert C's int type
+	// to Go's int
 	return (int)(C.clist_mempool_size(m.handle))
+}
+
+func (m CListMempool) SizeBytes() int64 {
+	return (int64)(C.clist_mempool_size_bytes(m.handle))
 }
 
 /// Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.

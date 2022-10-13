@@ -37,6 +37,8 @@ pub struct CListMempool {
     config: MempoolConfig,
     height: i64,
     txs: VecDeque<MempoolTx>,
+    // size of the sum of all txs the mempool, in bytes
+    tx_bytes: i64,
 }
 
 static mut MEMPOOL: Option<CListMempool> = None;
@@ -71,6 +73,7 @@ pub unsafe extern "C" fn clist_mempool_new(
         },
         height,
         txs: VecDeque::new(),
+        tx_bytes: 0,
     });
 
     Handle { handle: 0 }
@@ -83,7 +86,18 @@ pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
     } else {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
-        panic!("Double-free detected!");
+        panic!("Mempool not initialized!");
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_size_bytes(_mempool_handle: Handle) -> i64 {
+    if let Some(ref mempool) = MEMPOOL {
+        mempool.tx_bytes
+    } else {
+        // Panicking across an FFI boundary is undefined behavior. However,
+        // it'll have to do for this proof of concept :).
+        panic!("Mempool not initialized!");
     }
 }
 
