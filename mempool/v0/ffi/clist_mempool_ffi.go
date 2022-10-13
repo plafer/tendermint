@@ -18,7 +18,7 @@ func NewCListMempool(
 	height int64,
 ) *CListMempool {
 	return &CListMempool{
-		handle: (C.struct_Handle)(C.CListMempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
+		handle: (C.struct_Handle)(C.clist_mempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
 	}
 }
 
@@ -31,5 +31,5 @@ func (m CListMempool) Size() int {
 /// deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
 /// that any concrete type that uses Rust in its implementation has a way to be cleaned up.
 func (m CListMempool) Free() {
-	C.CListMempool_free(m.handle)	
+	C.clist_mempool_free(m.handle)	
 }

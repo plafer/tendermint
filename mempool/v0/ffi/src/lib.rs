@@ -49,7 +49,7 @@ pub struct Handle {
 /// Creates a new CListMempool.
 /// Currently does not implement any cache.
 #[no_mangle]
-pub unsafe extern "C" fn CListMempool_new(
+pub unsafe extern "C" fn clist_mempool_new(
     max_tx_bytes: i64,
     size: i64,
     keep_invalid_txs_in_cache: bool,
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn CListMempool_free(_mempool_handle: Handle) {
+pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
     if let None = MEMPOOL {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
