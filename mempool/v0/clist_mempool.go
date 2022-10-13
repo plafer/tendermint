@@ -146,7 +146,10 @@ func (mem *CListMempool) Unlock() {
 
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) Size() int {
-	return mem.txs.Len()
+	mem.updateMtx.RLock()
+	defer mem.updateMtx.RUnlock()
+
+	return mem.rsMempool.Size()
 }
 
 // Safe for concurrent use by multiple goroutines.

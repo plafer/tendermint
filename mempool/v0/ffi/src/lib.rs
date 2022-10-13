@@ -5,6 +5,7 @@
 ///! In other words, the go code is expected to guard the access to the FFI
 ///! with a mutex.
 use core::ffi::c_int;
+use std::collections::VecDeque;
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
 /// that for simplicity, we use the widest types possible (e.g. i64 for unsigned
@@ -24,9 +25,18 @@ pub struct MempoolConfig {
     recheck: bool,
 }
 
+struct MempoolTx {
+    height: i64,
+    gas_wanted: i64,
+    tx: Vec<u8>,
+    // also (add later)
+    // senders: PeerId -> bool
+}
+
 pub struct CListMempool {
     config: MempoolConfig,
     height: i64,
+    txs: VecDeque<MempoolTx>,
 }
 
 static mut MEMPOOL: Option<CListMempool> = None;
@@ -60,9 +70,21 @@ pub unsafe extern "C" fn CListMempool_new(
             recheck,
         },
         height,
+        txs: VecDeque::new(),
     });
 
     Handle { handle: 0 }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
+    if let Some(ref mempool) = MEMPOOL {
+        mempool.txs.len()
+    } else {
+        // Panicking across an FFI boundary is undefined behavior. However,
+        // it'll have to do for this proof of concept :).
+        panic!("Double-free detected!");
+    }
 }
 
 #[no_mangle]
