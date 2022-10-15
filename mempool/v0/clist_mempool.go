@@ -362,16 +362,12 @@ func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (mem *CListMempool) isFull(txSize int) error {
-	var (
-		memSize  = mem.Size()
-		txsBytes = mem.SizeBytes()
-	)
-
-	if memSize >= mem.config.Size || int64(txSize)+txsBytes > mem.config.MaxTxsBytes {
+	if mem.rsMempool.IsFull(txSize) {
+		// FIXME: Fill in proper values
 		return mempool.ErrMempoolIsFull{
-			NumTxs:      memSize,
+			NumTxs:      0,
 			MaxTxs:      mem.config.Size,
-			TxsBytes:    txsBytes,
+			TxsBytes:    0,
 			MaxTxsBytes: mem.config.MaxTxsBytes,
 		}
 	}

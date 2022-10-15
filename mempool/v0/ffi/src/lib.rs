@@ -102,6 +102,20 @@ pub unsafe extern "C" fn clist_mempool_size_bytes(_mempool_handle: Handle) -> i6
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size: i64) -> bool {
+    if let Some(ref mempool) = MEMPOOL {
+        let mem_size = mempool.txs.len() as i64;
+        let mem_tx_bytes = mempool.tx_bytes;
+
+        mem_size >= mempool.config.size || (mem_tx_bytes + tx_size) > mempool.config.max_tx_bytes
+    } else {
+        // Panicking across an FFI boundary is undefined behavior. However,
+        // it'll have to do for this proof of concept :).
+        panic!("Mempool not initialized!");
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
     if let None = MEMPOOL {
         // Panicking across an FFI boundary is undefined behavior. However,

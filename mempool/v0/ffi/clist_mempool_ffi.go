@@ -32,6 +32,10 @@ func (m CListMempool) SizeBytes() int64 {
 	return (int64)(C.clist_mempool_size_bytes(m.handle))
 }
 
+func (m CListMempool) IsFull(txSize int) bool {
+	return (bool)(C.clist_mempool_is_full(m.handle, C.longlong(txSize)))
+}
+
 /// Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
 /// Specifically, users of FFI types will need to manage Rust memory manually by making sure they
 /// deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
