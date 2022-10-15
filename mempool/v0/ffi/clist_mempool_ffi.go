@@ -8,6 +8,7 @@ package ffi
 import "C"
 
 import "github.com/tendermint/tendermint/config"
+import "github.com/tendermint/tendermint/mempool/v0/tx"
 
 type CListMempool struct {
 	handle C.struct_Handle
@@ -34,6 +35,10 @@ func (m CListMempool) SizeBytes() int64 {
 
 func (m CListMempool) IsFull(txSize int) bool {
 	return (bool)(C.clist_mempool_is_full(m.handle, C.longlong(txSize)))
+}
+
+func (m CListMempool) AddTx(memTx *tx.MempoolTx) bool {
+	return false
 }
 
 /// Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.

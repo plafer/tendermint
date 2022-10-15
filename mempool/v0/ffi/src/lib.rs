@@ -116,6 +116,12 @@ pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size:
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn clist_mempool_add_tx(_mempool_handle: Handle, height: i64, gas_wanted: i64, tx: *mut u8) -> bool {
+    todo!()
+}
+
+
+#[no_mangle]
 pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
     if let None = MEMPOOL {
         // Panicking across an FFI boundary is undefined behavior. However,
