@@ -45,6 +45,7 @@ type CListMempool struct {
 	// Mutex to protect `Size()` and `SizeBytes()`
 	// FIXME: find a better solution (e.g. atomics in Rust?)
 	sizeMtx tmsync.RWMutex
+	addRemoveMtx tmsync.Mutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
@@ -329,9 +330,12 @@ func (mem *CListMempool) reqResCb(
 // Called from:
 //   - resCbFirstTime (lock not held) if tx is valid
 func (mem *CListMempool) addTx(memTx *v0tx.MempoolTx) {
-	e := mem.txs.PushBack(memTx)
-	mem.txsMap.Store(memTx.Tx.Key(), e)
-	atomic.AddInt64(&mem.txsBytes, int64(len(memTx.Tx)))
+	mem.addRemoveMtx.Lock()
+	defer mem.addRemoveMtx.Unlock()
+
+	mem.rsMempool.AddTx(memTx)
+
+	// metrics still tracked in go
 	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.Tx)))
 }
 

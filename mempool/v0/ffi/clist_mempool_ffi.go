@@ -6,6 +6,7 @@ package ffi
 //#cgo LDFLAGS: -L${SRCDIR}/target/release -lclist_mempool_rs
 // #include "target/release/mempool_bindings.h"
 import "C"
+import "unsafe"
 
 import "github.com/tendermint/tendermint/config"
 import "github.com/tendermint/tendermint/mempool/v0/tx"
@@ -38,13 +39,15 @@ func (m CListMempool) IsFull(txSize int) bool {
 }
 
 func (m CListMempool) AddTx(memTx *tx.MempoolTx) bool {
-	return false
+	var c_tx = unsafe.Pointer(&memTx.Tx)
+	var ret = C.clist_mempool_add_tx(m.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
+	return (bool)(ret)
 }
 
-/// Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
-/// Specifically, users of FFI types will need to manage Rust memory manually by making sure they
-/// deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
-/// that any concrete type that uses Rust in its implementation has a way to be cleaned up.
+// / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
+// / Specifically, users of FFI types will need to manage Rust memory manually by making sure they
+// / deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
+// / that any concrete type that uses Rust in its implementation has a way to be cleaned up.
 func (m CListMempool) Free() {
-	C.clist_mempool_free(m.handle)	
+	C.clist_mempool_free(m.handle)
 }

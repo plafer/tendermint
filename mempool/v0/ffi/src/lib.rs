@@ -4,9 +4,12 @@
 ///! Every function exposed is expected to be accessed be 1 thread at a time.
 ///! In other words, the go code is expected to guard the access to the FFI
 ///! with a mutex.
-use core::ffi::c_int;
-use std::collections::VecDeque;
+mod tx;
 
+use core::ffi::c_int;
+use std::collections::{HashMap, VecDeque};
+
+use tx::MempoolTx;
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
 /// that for simplicity, we use the widest types possible (e.g. i64 for unsigned
 /// integers) to ensure compatibility between go and Rust on any system. There
@@ -23,14 +26,6 @@ pub struct MempoolConfig {
     // valid again in the future.
     keep_invalid_txs_in_cache: bool,
     recheck: bool,
-}
-
-struct MempoolTx {
-    height: i64,
-    gas_wanted: i64,
-    tx: Vec<u8>,
-    // also (add later)
-    // senders: PeerId -> bool
 }
 
 pub struct CListMempool {
@@ -115,11 +110,39 @@ pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size:
     }
 }
 
+/// `tx` must not be stored by the Rust code
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_add_tx(_mempool_handle: Handle, height: i64, gas_wanted: i64, tx: *mut u8) -> bool {
+pub unsafe extern "C" fn clist_mempool_add_tx(
+    _mempool_handle: Handle,
+    height: i64,
+    gas_wanted: i64,
+    tx: *const u8,
+    tx_len: usize,
+) -> bool {
+    let tx = std::slice::from_raw_parts(tx, tx_len);
+    let tx_vec: Vec<u8> = {
+        let mut tx_vec = Vec::with_capacity(tx_len);
+        tx_vec.copy_from_slice(tx);
+        tx_vec
+    };
+
+    if let Some(ref mut mempool) = MEMPOOL {
+        let mempool_tx = MempoolTx {
+            height,
+            gas_wanted,
+            tx: tx_vec,
+        };
+        mempool.txs.push_back(mempool_tx);
+
+        // TODO: add tx to `tx_map` (i.e. an indexer over the `txs` queue)
+
+        mempool.tx_bytes += tx_len as i64;
+    } else {
+        panic!("Mempool not initialized!");
+    }
+
     todo!()
 }
-
 
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
