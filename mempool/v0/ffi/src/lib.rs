@@ -7,9 +7,11 @@
 mod tx;
 
 use core::ffi::c_int;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
-use tx::MempoolTx;
+use linked_hash_map::LinkedHashMap;
+use tx::{MempoolTx, TxKeyHash};
+
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
 /// that for simplicity, we use the widest types possible (e.g. i64 for unsigned
 /// integers) to ensure compatibility between go and Rust on any system. There
@@ -31,7 +33,8 @@ pub struct MempoolConfig {
 pub struct CListMempool {
     config: MempoolConfig,
     height: i64,
-    txs: VecDeque<MempoolTx>,
+    /// Implements both go's `tx` and `txsMap`
+    txs: LinkedHashMap<TxKeyHash, MempoolTx>,
     // size of the sum of all txs the mempool, in bytes
     tx_bytes: i64,
 }
@@ -67,7 +70,7 @@ pub unsafe extern "C" fn clist_mempool_new(
             recheck,
         },
         height,
-        txs: VecDeque::new(),
+        txs: LinkedHashMap::new(),
         tx_bytes: 0,
     });
 
@@ -118,7 +121,7 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
     gas_wanted: i64,
     tx: *const u8,
     tx_len: usize,
-) -> bool {
+) {
     let tx = std::slice::from_raw_parts(tx, tx_len);
     let tx_vec: Vec<u8> = {
         let mut tx_vec = Vec::with_capacity(tx_len);
@@ -132,16 +135,12 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
             gas_wanted,
             tx: tx_vec,
         };
-        mempool.txs.push_back(mempool_tx);
-
-        // TODO: add tx to `tx_map` (i.e. an indexer over the `txs` queue)
+        mempool.txs.insert(mempool_tx.hash(), mempool_tx);
 
         mempool.tx_bytes += tx_len as i64;
     } else {
         panic!("Mempool not initialized!");
     }
-
-    todo!()
 }
 
 #[no_mangle]

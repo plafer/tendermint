@@ -38,10 +38,9 @@ func (m CListMempool) IsFull(txSize int) bool {
 	return (bool)(C.clist_mempool_is_full(m.handle, C.longlong(txSize)))
 }
 
-func (m CListMempool) AddTx(memTx *tx.MempoolTx) bool {
+func (m CListMempool) AddTx(memTx *tx.MempoolTx) {
 	var c_tx = unsafe.Pointer(&memTx.Tx)
-	var ret = C.clist_mempool_add_tx(m.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
-	return (bool)(ret)
+	C.clist_mempool_add_tx(m.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
 }
 
 // / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
