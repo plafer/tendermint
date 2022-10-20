@@ -44,7 +44,7 @@ type CListMempool struct {
 
 	// Mutex to protect `Size()` and `SizeBytes()`
 	// FIXME: find a better solution (e.g. atomics in Rust?)
-	sizeMtx tmsync.RWMutex
+	sizeMtx      tmsync.RWMutex
 	addRemoveMtx tmsync.Mutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
@@ -343,14 +343,10 @@ func (mem *CListMempool) addTx(memTx *v0tx.MempoolTx) {
 //   - Update (lock held) if tx was committed
 //   - resCbRecheck (lock not held) if tx was invalidated
 func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
-	mem.txs.Remove(elem)
-	elem.DetachPrev()
-	mem.txsMap.Delete(tx.Key())
-	atomic.AddInt64(&mem.txsBytes, int64(-len(tx)))
+	mem.addRemoveMtx.Lock()
+	defer mem.addRemoveMtx.Unlock()
 
-	if removeFromCache {
-		mem.cache.Remove(tx)
-	}
+	mem.rsMempool.RemoveTx(tx, removeFromCache)
 }
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.

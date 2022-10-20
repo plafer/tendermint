@@ -10,7 +10,7 @@ use core::ffi::c_int;
 use std::collections::VecDeque;
 
 use linked_hash_map::LinkedHashMap;
-use tx::{MempoolTx, TxKeyHash};
+use tx::{MempoolTx, TxKeyHash, hash_tx};
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
 /// that for simplicity, we use the widest types possible (e.g. i64 for unsigned
@@ -122,14 +122,13 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
     tx: *const u8,
     tx_len: usize,
 ) {
-    let tx = std::slice::from_raw_parts(tx, tx_len);
-    let tx_vec: Vec<u8> = {
-        let mut tx_vec = Vec::with_capacity(tx_len);
-        tx_vec.copy_from_slice(tx);
-        tx_vec
-    };
-
     if let Some(ref mut mempool) = MEMPOOL {
+        let tx = std::slice::from_raw_parts(tx, tx_len);
+        let tx_vec: Vec<u8> = {
+            let mut tx_vec = Vec::with_capacity(tx_len);
+            tx_vec.copy_from_slice(tx);
+            tx_vec
+        };
         let mempool_tx = MempoolTx {
             height,
             gas_wanted,
@@ -138,6 +137,25 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
         mempool.txs.insert(mempool_tx.hash(), mempool_tx);
 
         mempool.tx_bytes += tx_len as i64;
+    } else {
+        panic!("Mempool not initialized!");
+    }
+}
+
+/// `tx` must not be stored by the Rust code
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_remove_tx(
+    _mempool_handle: Handle,
+    tx: *const u8,
+    tx_len: usize,
+    _remove_from_cache: bool,
+) {
+    if let Some(ref mut mempool) = MEMPOOL {
+        let tx = std::slice::from_raw_parts(tx, tx_len);
+        let tx_hash = hash_tx(tx);
+       
+        mempool.txs.remove(&tx_hash);
+        mempool.tx_bytes -= tx_len as i64;
     } else {
         panic!("Mempool not initialized!");
     }

@@ -10,6 +10,7 @@ import "unsafe"
 
 import "github.com/tendermint/tendermint/config"
 import "github.com/tendermint/tendermint/mempool/v0/tx"
+import "github.com/tendermint/tendermint/types"
 
 type CListMempool struct {
 	handle C.struct_Handle
@@ -39,8 +40,14 @@ func (m CListMempool) IsFull(txSize int) bool {
 }
 
 func (m CListMempool) AddTx(memTx *tx.MempoolTx) {
+	// Q: Can Go byte arrays be interpreted properly by C?
 	var c_tx = unsafe.Pointer(&memTx.Tx)
 	C.clist_mempool_add_tx(m.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
+}
+
+func (m CListMempool) RemoveTx(tx types.Tx, removeFromCache bool) {
+	var c_tx = unsafe.Pointer(&tx)
+	C.clist_mempool_remove_tx(m.handle, (*C.uchar)(c_tx), C.ulong(len(tx)), C.bool(removeFromCache))
 }
 
 // / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.

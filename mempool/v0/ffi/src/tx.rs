@@ -1,4 +1,9 @@
-use sha2::{digest::generic_array::{GenericArray, typenum::U32}, Sha256, Digest};
+use std::hash::Hash;
+
+use sha2::{
+    digest::generic_array::{typenum::U32, GenericArray},
+    Digest, Sha256,
+};
 
 /// Type that key hashes have
 pub type TxKeyHash = GenericArray<u8, U32>;
@@ -12,9 +17,14 @@ pub struct MempoolTx {
 }
 
 impl MempoolTx {
+    // TODO: Investigate using std::hash instead
     pub fn hash(&self) -> TxKeyHash {
-        let mut hasher = Sha256::new();
-        hasher.update(&self.tx);
-        hasher.finalize()
+        hash_tx(&self.tx)
     }
+}
+
+pub fn hash_tx(tx: &[u8]) -> TxKeyHash {
+    let mut hasher = Sha256::new();
+    hasher.update(tx);
+    hasher.finalize()
 }
