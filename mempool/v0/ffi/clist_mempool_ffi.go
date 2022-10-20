@@ -6,7 +6,6 @@ package ffi
 //#cgo LDFLAGS: -L${SRCDIR}/target/release -lclist_mempool_rs
 // #include "target/release/mempool_bindings.h"
 import "C"
-import "unsafe"
 
 import "github.com/tendermint/tendermint/config"
 import "github.com/tendermint/tendermint/mempool/v0/tx"
@@ -40,14 +39,21 @@ func (m CListMempool) IsFull(txSize int) bool {
 }
 
 func (m CListMempool) AddTx(memTx *tx.MempoolTx) {
-	// Q: Can Go byte arrays be interpreted properly by C?
-	var c_tx = unsafe.Pointer(&memTx.Tx)
+	// FIXME: I'm not sure if the `CBytes` allocation is needed;
+	// or whether Go's representation of a `[]byte` is the
+	// same as C's (or rather if `&arr[0]` can be casted to unsafe.Pointer
+	// and passed to C). Cgo docs confirm that you can pass pointers allocated
+	// in Go to C, as long as C doesn't store them. But I'm not sure about the
+	// type differences between `[]byte` and `uint8_t *`
+	var c_tx = C.CBytes(memTx.Tx)
 	C.clist_mempool_add_tx(m.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
+	C.free(c_tx)
 }
 
 func (m CListMempool) RemoveTx(tx types.Tx, removeFromCache bool) {
-	var c_tx = unsafe.Pointer(&tx)
+	var c_tx = C.CBytes(tx)
 	C.clist_mempool_remove_tx(m.handle, (*C.uchar)(c_tx), C.ulong(len(tx)), C.bool(removeFromCache))
+	C.free(c_tx)
 }
 
 // / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
