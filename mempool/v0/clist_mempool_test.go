@@ -729,4 +729,11 @@ func TestAddRemove(t *testing.T) {
 
 	assert.EqualValues(t, nTxs * txLen, mp.SizeBytes())
 	assert.EqualValues(t, nTxs, mp.Size())
+
+	for i := 0; i < nTxs; i++ {
+		mp.removeTx(memTxs[i].Tx, nil, false)
+	}
+
+	assert.EqualValues(t, 0, mp.SizeBytes())
+	assert.EqualValues(t, 0, mp.Size())
 }
