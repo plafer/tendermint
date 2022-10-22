@@ -16,13 +16,7 @@ pub struct MempoolTx {
     // senders: PeerId -> bool
 }
 
-impl MempoolTx {
-    // TODO: Investigate using std::hash instead
-    pub fn hash(&self) -> TxKeyHash {
-        hash_tx(&self.tx)
-    }
-}
-
+// TODO: Investigate using std::hash instead
 pub fn hash_tx(tx: &[u8]) -> TxKeyHash {
     let mut hasher = Sha256::new();
     hasher.update(tx);

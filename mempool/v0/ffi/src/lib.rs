@@ -134,7 +134,7 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
             gas_wanted,
             tx: tx_vec,
         };
-        mempool.txs.insert(mempool_tx.hash(), mempool_tx);
+        mempool.txs.insert(hash_tx(&mempool_tx.tx), mempool_tx);
 
         mempool.tx_bytes += tx_len as i64;
     } else {
