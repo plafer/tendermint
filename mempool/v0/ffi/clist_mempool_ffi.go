@@ -7,9 +7,11 @@ package ffi
 // #include "target/release/mempool_bindings.h"
 import "C"
 
-import "github.com/tendermint/tendermint/config"
-import "github.com/tendermint/tendermint/mempool/v0/tx"
-import "github.com/tendermint/tendermint/types"
+import (
+	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/mempool/v0/tx"
+	"github.com/tendermint/tendermint/types"
+)
 
 type CListMempool struct {
 	handle C.struct_Handle

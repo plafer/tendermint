@@ -6,6 +6,7 @@ import (
 	"fmt"
 	mrand "math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/mempool"
+	"github.com/tendermint/tendermint/mempool/v0/tx"
 	v0tx "github.com/tendermint/tendermint/mempool/v0/tx"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
@@ -702,4 +704,29 @@ func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
 		responses = append(responses, &abci.ResponseDeliverTx{Code: code})
 	}
 	return responses
+}
+
+func TestAddRemove(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+
+	cfg := config.ResetTestRoot("mempool_test")
+
+	cfg.Mempool.MaxTxsBytes = 1111110
+	mp, cleanup := newMempoolWithAppAndConfig(cc, cfg)
+	defer cleanup()
+
+	assert.EqualValues(t, 0, mp.SizeBytes())
+
+	// generate small number of txs
+	nTxs := 10
+	txLen := 200
+	memTxs := make([]tx.MempoolTx, nTxs)
+	for i := 0; i < nTxs; i++ {
+		memTxs[i] = tx.MempoolTx{Height: 10, GasWanted: 0, Tx: tmrand.Bytes(txLen), Senders: sync.Map{}}
+		mp.addTx(&memTxs[i])
+	}
+
+	assert.EqualValues(t, nTxs * txLen, mp.SizeBytes())
+	assert.EqualValues(t, nTxs, mp.Size())
 }

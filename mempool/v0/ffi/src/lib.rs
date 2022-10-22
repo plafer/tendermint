@@ -126,7 +126,7 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
         let tx = std::slice::from_raw_parts(tx, tx_len);
         let tx_vec: Vec<u8> = {
             let mut tx_vec = Vec::with_capacity(tx_len);
-            tx_vec.copy_from_slice(tx);
+            tx_vec.extend_from_slice(tx);
             tx_vec
         };
         let mempool_tx = MempoolTx {
