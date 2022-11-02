@@ -9,7 +9,7 @@ mod tx;
 use core::ffi::c_int;
 
 use linked_hash_map::LinkedHashMap;
-use tx::{MempoolTx, TxKeyHash, hash_tx};
+use tx::{hash_tx, MempoolTx, TxKeyHash};
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
 /// that for simplicity, we use the widest types possible (e.g. i64 for unsigned
@@ -154,9 +154,71 @@ pub unsafe extern "C" fn clist_mempool_remove_tx(
     if let Some(ref mut mempool) = MEMPOOL {
         let tx = std::slice::from_raw_parts(tx, tx_len);
         let tx_hash = hash_tx(tx);
-       
+
         mempool.txs.remove(&tx_hash);
         mempool.tx_bytes -= tx_len as i64;
+    } else {
+        panic!("Mempool not initialized!");
+    }
+}
+
+#[repr(C)]
+pub struct RawTx {
+    tx: *const u8,
+    len: usize,
+}
+
+#[repr(C)]
+pub struct RawTxs {
+    txs: *const RawTx,
+    len: usize,
+}
+
+/// Returned memory must not be stored in go. In go, use of `C.GoBytes()` is recommended.
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
+    _mempool_handle: Handle,
+    max_bytes: i64,
+    max_gas: i64,
+) -> RawTxs {
+    if let Some(ref mempool) = MEMPOOL {
+        let mut txs_to_return: Vec<&MempoolTx> = Vec::new();
+
+        let mut running_size = 0;
+        let mut running_gas = 0;
+        for (_tx_hash, mem_tx) in mempool.txs.iter() {
+            // FIXME: this is incorrect. We need to look at the size of all the
+            // current txs once marshalled to protobuf format
+            let temptative_size = running_size + mem_tx.tx.len() as i64;
+            if max_bytes > 1 && temptative_size > max_bytes {
+                break;
+            }
+
+            let temptative_gas = running_gas + mem_tx.gas_wanted;
+            if temptative_gas > -1 && temptative_gas > max_gas {
+                break;
+            }
+
+            // success: we can add the current tx to the current output
+            txs_to_return.push(&mem_tx);
+            running_size = temptative_size;
+            running_gas = temptative_gas;
+        }
+
+        {
+            let txs_to_return: Vec<_> = txs_to_return
+                .into_iter()
+                .map(|mem_tx| RawTx {
+                    tx: mem_tx.tx.as_ptr(),
+                    len: mem_tx.tx.len(),
+                })
+                .collect();
+
+            RawTxs {
+                txs: txs_to_return.as_ptr(),
+                len: txs_to_return.len(),
+            }
+        }
     } else {
         panic!("Mempool not initialized!");
     }
