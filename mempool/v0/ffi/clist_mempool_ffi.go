@@ -8,6 +8,8 @@ package ffi
 import "C"
 
 import (
+	"unsafe"
+
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/mempool/v0/tx"
 	"github.com/tendermint/tendermint/types"
@@ -56,6 +58,14 @@ func (m CListMempool) RemoveTx(tx types.Tx, removeFromCache bool) {
 	var c_tx = C.CBytes(tx)
 	C.clist_mempool_remove_tx(m.handle, (*C.uchar)(c_tx), C.ulong(len(tx)), C.bool(removeFromCache))
 	C.free(c_tx)
+}
+
+func (m CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
+	raw_txs := C.clist_mempool_reap_max_bytes_max_gas(m.handle, C.longlong(maxBytes), C.longlong(maxGas))
+
+	txs := C.GoBytes(unsafe.Pointer(raw_txs.txs), C.int(raw_txs.len))
+
+	return types.Txs{txs}
 }
 
 // / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
