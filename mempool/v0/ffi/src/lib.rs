@@ -7,7 +7,6 @@
 mod tx;
 
 use core::ffi::c_int;
-use std::collections::VecDeque;
 
 use linked_hash_map::LinkedHashMap;
 use tx::{MempoolTx, TxKeyHash, hash_tx};
@@ -143,6 +142,8 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
 }
 
 /// `tx` must not be stored by the Rust code
+/// Note: I think this will eventually go, as all calls
+/// remove a tx will be coming from rust.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_remove_tx(
     _mempool_handle: Handle,
