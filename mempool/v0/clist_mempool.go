@@ -26,6 +26,12 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+// We're not allowed to store Go pointers in Rust, and Rust sometimes needs a
+// reference to the Go part of the mempool e.g. to write to the `txsAvailable`
+// channel. If we want to allow more than one mempool at a time, we can make
+// this a slice and send a handle to Rust.
+var gMem *CListMempool = nil
+
 // CListMempool is an ordered in-memory pool for transactions before they are
 // proposed in a consensus round. Transaction validity is checked using the
 // CheckTx abci message before the transaction is added to the pool. The
@@ -90,6 +96,11 @@ func NewCListMempool(
 	options ...CListMempoolOption,
 ) *CListMempool {
 
+	if gMem != nil {
+		// Currently can only have one instance at a time
+		return nil
+	}
+
 	mp := &CListMempool{
 		config:        cfg,
 		proxyAppConn:  proxyAppConn,
@@ -113,6 +124,8 @@ func NewCListMempool(
 	for _, option := range options {
 		option(mp)
 	}
+
+	gMem = mp
 
 	return mp
 }
@@ -672,4 +685,5 @@ func (mem *CListMempool) recheckTxs() {
 /// that any concrete type that uses Rust in its implementation has a way to be cleaned up.
 func (mem *CListMempool) Free() {
 	C.clist_mempool_free(mem.handle)
+	gMem = nil
 }
