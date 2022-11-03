@@ -27,7 +27,6 @@ import (
 	"github.com/tendermint/tendermint/libs/service"
 	"github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/mempool/v0/tx"
-	v0tx "github.com/tendermint/tendermint/mempool/v0/tx"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 )
@@ -129,7 +128,7 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 
 	// Ensure gas calculation behaves as expected
 	checkTxs(t, mp, 1, mempool.UnknownPeerID)
-	tx0 := mp.TxsFront().Value.(*v0tx.MempoolTx)
+	tx0 := mp.TxsFront().Value.(*tx.MempoolTx)
 	// assert that kv store has gas wanted = 1.
 	require.Equal(t, app.CheckTx(abci.RequestCheckTx{Tx: tx0.Tx}).GasWanted, int64(1), "KVStore had a gas value neq to 1")
 	require.Equal(t, tx0.GasWanted, int64(1), "transactions gas was set incorrectly")
@@ -724,16 +723,85 @@ func TestAddRemove(t *testing.T) {
 	memTxs := make([]tx.MempoolTx, nTxs)
 	for i := 0; i < nTxs; i++ {
 		memTxs[i] = tx.MempoolTx{Height: 10, GasWanted: 0, Tx: tmrand.Bytes(txLen), Senders: sync.Map{}}
-		mp.addTx(&memTxs[i])
+		mp.AddTx(&memTxs[i])
 	}
 
-	assert.EqualValues(t, nTxs * txLen, mp.SizeBytes())
+	assert.EqualValues(t, nTxs*txLen, mp.SizeBytes())
 	assert.EqualValues(t, nTxs, mp.Size())
 
 	for i := 0; i < nTxs; i++ {
-		mp.removeTx(memTxs[i].Tx, nil, false)
+		mp.RemoveTx(memTxs[i].Tx, nil, false)
 	}
 
 	assert.EqualValues(t, 0, mp.SizeBytes())
 	assert.EqualValues(t, 0, mp.Size())
+}
+
+func TestReapMaxBytesMaxGasSimple(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	mp, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	// each table driven test creates numTxsToCreate txs with checkTx, and at the end clears all remaining txs.
+	// each tx has 20 bytes
+	tests := []struct {
+		numTxsToCreate int
+		maxBytes       int64
+		maxGas         int64
+		expectedNumTxs int
+	}{
+		{20, -1, -1, 20},
+		{20, -1, 0, 0},
+		{20, -1, 10, 10},
+		{20, -1, 30, 20},
+		{20, 0, -1, 0},
+		{20, 0, 10, 0},
+		{20, 10, 10, 0},
+		{20, 24, 10, 1},
+		{20, 240, 5, 5},
+
+		// DIFFERENT from original; probably because we don't compute the proto
+		// size (see FIXME in rust)
+		{20, 240, -1, 12},
+
+		{20, 240, 10, 10},
+
+		// DIFFERENT from original; probably because our gas function in this
+		// test (always 1) is different from what checkTx gives us
+		{20, 240, 15, 12},
+
+		{20, 20000, -1, 20},
+		{20, 20000, 5, 5},
+		{20, 20000, 30, 20},
+	}
+
+	for tcIndex, tt := range tests {
+		txs := make(types.Txs, tt.numTxsToCreate)
+		for i := 0; i < tt.numTxsToCreate; i++ {
+			txBytes := make([]byte, 20)
+			txs[i] = txBytes
+			_, err := rand.Read(txBytes)
+			if err != nil {
+				t.Error(err)
+			}
+
+			memTx := tx.MempoolTx{
+				Height:    mp.height,
+				GasWanted: 1,
+				Tx:        txBytes,
+				Senders:   sync.Map{},
+			}
+
+			mp.AddTx(&memTx)
+		}
+
+		got := mp.ReapMaxBytesMaxGas(tt.maxBytes, tt.maxGas)
+		assert.Equal(t, tt.expectedNumTxs, len(got), "Got %d txs, expected %d, tc #%d",
+			len(got), tt.expectedNumTxs, tcIndex)
+
+		for i := 0; i < tt.numTxsToCreate; i++ {
+			mp.RemoveTx(txs[i], nil, false)
+		}
+	}
 }

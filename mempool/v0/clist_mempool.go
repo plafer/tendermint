@@ -329,7 +329,9 @@ func (mem *CListMempool) reqResCb(
 
 // Called from:
 //   - resCbFirstTime (lock not held) if tx is valid
-func (mem *CListMempool) addTx(memTx *v0tx.MempoolTx) {
+//
+// FIXME: set back to `addTx` when CheckTx is implemented.
+func (mem *CListMempool) AddTx(memTx *v0tx.MempoolTx) {
 	mem.addRemoveMtx.Lock()
 	defer mem.addRemoveMtx.Unlock()
 
@@ -342,7 +344,9 @@ func (mem *CListMempool) addTx(memTx *v0tx.MempoolTx) {
 // Called from:
 //   - Update (lock held) if tx was committed
 //   - resCbRecheck (lock not held) if tx was invalidated
-func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
+//
+// FIXME: set back to `addTx` when CheckTx is implemented.
+func (mem *CListMempool) RemoveTx(tx types.Tx, elem *clist.CElement, removeFromCache bool) {
 	mem.addRemoveMtx.Lock()
 	defer mem.addRemoveMtx.Unlock()
 
@@ -354,7 +358,7 @@ func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
 	if e, ok := mem.txsMap.Load(txKey); ok {
 		memTx := e.(*clist.CElement).Value.(*v0tx.MempoolTx)
 		if memTx != nil {
-			mem.removeTx(memTx.Tx, e.(*clist.CElement), false)
+			mem.RemoveTx(memTx.Tx, e.(*clist.CElement), false)
 			return nil
 		}
 		return errors.New("transaction not found")
@@ -408,7 +412,7 @@ func (mem *CListMempool) resCbFirstTime(
 				Tx:        tx,
 			}
 			memTx.Senders.Store(peerID, true)
-			mem.addTx(memTx)
+			mem.AddTx(memTx)
 			mem.logger.Debug(
 				"added good transaction",
 				"tx", types.Tx(tx).Hash(),
@@ -488,7 +492,7 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 			// Tx became invalidated due to newly committed block.
 			mem.logger.Debug("tx is no longer valid", "tx", types.Tx(tx).Hash(), "res", r, "err", postCheckErr)
 			// NOTE: we remove tx from the cache because it might be good later
-			mem.removeTx(tx, mem.recheckCursor, !mem.config.KeepInvalidTxsInCache)
+			mem.RemoveTx(tx, mem.recheckCursor, !mem.config.KeepInvalidTxsInCache)
 		}
 		if mem.recheckCursor == mem.recheckEnd {
 			mem.recheckCursor = nil
@@ -592,7 +596,7 @@ func (mem *CListMempool) Update(
 		//   100
 		// https://github.com/tendermint/tendermint/issues/3322.
 		if e, ok := mem.txsMap.Load(tx.Key()); ok {
-			mem.removeTx(tx, e.(*clist.CElement), false)
+			mem.RemoveTx(tx, e.(*clist.CElement), false)
 		}
 	}
 

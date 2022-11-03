@@ -175,6 +175,7 @@ pub struct RawTxs {
 }
 
 /// Returned memory must not be stored in go. In go, use of `C.GoBytes()` is recommended.
+/// Does not remove the transactions from the mempool.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     _mempool_handle: Handle,
@@ -183,24 +184,24 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
 ) -> RawTxs {
     if let Some(ref mempool) = MEMPOOL {
         let mut txs_to_return: Vec<&MempoolTx> = Vec::new();
-
+        
         let mut running_size = 0;
         let mut running_gas = 0;
         for (_tx_hash, mem_tx) in mempool.txs.iter() {
             // FIXME: this is incorrect. We need to look at the size of all the
             // current txs once marshalled to protobuf format
             let temptative_size = running_size + mem_tx.tx.len() as i64;
-            if max_bytes > 1 && temptative_size > max_bytes {
+            if max_bytes > -1 && temptative_size > max_bytes {
                 break;
             }
 
             let temptative_gas = running_gas + mem_tx.gas_wanted;
-            if temptative_gas > -1 && temptative_gas > max_gas {
+            if max_gas > -1 && temptative_gas > max_gas {
                 break;
             }
 
             // success: we can add the current tx to the current output
-            txs_to_return.push(&mem_tx);
+            txs_to_return.push(mem_tx);
             running_size = temptative_size;
             running_gas = temptative_gas;
         }

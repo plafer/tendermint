@@ -62,10 +62,15 @@ func (m CListMempool) RemoveTx(tx types.Tx, removeFromCache bool) {
 
 func (m CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	raw_txs := C.clist_mempool_reap_max_bytes_max_gas(m.handle, C.longlong(maxBytes), C.longlong(maxGas))
+	raw_txs_slice := unsafe.Slice(raw_txs.txs, raw_txs.len)
 
-	txs := C.GoBytes(unsafe.Pointer(raw_txs.txs), C.int(raw_txs.len))
+	txs := make([]types.Tx, len(raw_txs_slice))
+	for i := 0; i < len(txs); i++ {
+		// allocate new memory since `raw_txs` is owned by Rust
+		txs[i] = C.GoBytes(unsafe.Pointer(&raw_txs_slice[i].tx), C.int(raw_txs_slice[i].len))
+	}
 
-	return types.Txs{txs}
+	return txs
 }
 
 // / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
