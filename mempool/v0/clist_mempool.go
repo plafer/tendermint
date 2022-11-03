@@ -1,10 +1,17 @@
+// Friendly reminder: run `make build` at the root to build the rust bindings and header,
+// and, for VSCode users, run "Reload Window"
 package v0
+
+//#cgo LDFLAGS: -L${SRCDIR}/ffi/target/release -lclist_mempool_rs
+// #include "ffi/target/release/mempool_bindings.h"
+import "C"
 
 import (
 	"bytes"
 	"errors"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/config"
@@ -13,7 +20,6 @@ import (
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/mempool"
-	"github.com/tendermint/tendermint/mempool/v0/ffi"
 	v0tx "github.com/tendermint/tendermint/mempool/v0/tx"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/proxy"
@@ -67,7 +73,7 @@ type CListMempool struct {
 	logger  log.Logger
 	metrics *mempool.Metrics
 
-	rsMempool *ffi.CListMempool
+	handle C.struct_Handle
 }
 
 var _ mempool.Mempool = &CListMempool{}
@@ -93,7 +99,7 @@ func NewCListMempool(
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
-		rsMempool:     ffi.NewCListMempool(cfg, height),
+		handle: (C.struct_Handle)(C.clist_mempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
 	}
 
 	if cfg.CacheSize > 0 {
@@ -155,7 +161,7 @@ func (mem *CListMempool) Size() int {
 	mem.sizeMtx.RLock()
 	defer mem.sizeMtx.RUnlock()
 
-	return mem.rsMempool.Size()
+	return (int)(C.clist_mempool_size(mem.handle))
 }
 
 // Safe for concurrent use by multiple goroutines.
@@ -163,7 +169,7 @@ func (mem *CListMempool) SizeBytes() int64 {
 	mem.sizeMtx.RLock()
 	defer mem.sizeMtx.RUnlock()
 
-	return mem.rsMempool.SizeBytes()
+	return (int64)(C.clist_mempool_size_bytes(mem.handle))
 }
 
 // Lock() must be help by the caller during execution.
@@ -335,7 +341,15 @@ func (mem *CListMempool) AddTx(memTx *v0tx.MempoolTx) {
 	mem.addRemoveMtx.Lock()
 	defer mem.addRemoveMtx.Unlock()
 
-	mem.rsMempool.AddTx(memTx)
+	// FIXME: I'm not sure if the `CBytes` allocation is needed;
+	// or whether Go's representation of a `[]byte` is the
+	// same as C's (or rather if `&arr[0]` can be casted to unsafe.Pointer
+	// and passed to C). Cgo docs confirm that you can pass pointers allocated
+	// in Go to C, as long as C doesn't store them. But I'm not sure about the
+	// type differences between `[]byte` and `uint8_t *`
+	var c_tx = C.CBytes(memTx.Tx)
+	C.clist_mempool_add_tx(mem.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
+	C.free(c_tx)
 
 	// metrics still tracked in go
 	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.Tx)))
@@ -350,7 +364,9 @@ func (mem *CListMempool) RemoveTx(tx types.Tx, elem *clist.CElement, removeFromC
 	mem.addRemoveMtx.Lock()
 	defer mem.addRemoveMtx.Unlock()
 
-	mem.rsMempool.RemoveTx(tx, removeFromCache)
+	var c_tx = C.CBytes(tx)
+	C.clist_mempool_remove_tx(mem.handle, (*C.uchar)(c_tx), C.ulong(len(tx)), C.bool(removeFromCache))
+	C.free(c_tx)
 }
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.
@@ -367,7 +383,7 @@ func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
 }
 
 func (mem *CListMempool) isFull(txSize int) error {
-	if mem.rsMempool.IsFull(txSize) {
+	if (bool)(C.clist_mempool_is_full(mem.handle, C.longlong(txSize))) {
 		// FIXME: Fill in proper values
 		return mempool.ErrMempoolIsFull{
 			NumTxs:      0,
@@ -537,7 +553,16 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
-	return mem.rsMempool.ReapMaxBytesMaxGas(maxBytes, maxGas)
+	raw_txs := C.clist_mempool_reap_max_bytes_max_gas(mem.handle, C.longlong(maxBytes), C.longlong(maxGas))
+	raw_txs_slice := unsafe.Slice(raw_txs.txs, raw_txs.len)
+
+	txs := make([]types.Tx, len(raw_txs_slice))
+	for i := 0; i < len(txs); i++ {
+		// allocate new memory since `raw_txs` is owned by Rust
+		txs[i] = C.GoBytes(unsafe.Pointer(&raw_txs_slice[i].tx), C.int(raw_txs_slice[i].len))
+	}
+
+	return txs
 }
 
 // Safe for concurrent use by multiple goroutines.
@@ -639,4 +664,12 @@ func (mem *CListMempool) recheckTxs() {
 	}
 
 	mem.proxyAppConn.FlushAsync()
+}
+
+/// Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
+/// Specifically, users of FFI types will need to manage Rust memory manually by making sure they
+/// deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
+/// that any concrete type that uses Rust in its implementation has a way to be cleaned up.
+func (mem *CListMempool) Free() {
+	C.clist_mempool_free(mem.handle)
 }
