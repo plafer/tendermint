@@ -3,7 +3,7 @@
 package v0
 
 //#cgo LDFLAGS: -L${SRCDIR}/ffi/target/release -lclist_mempool_rs
-// #include "ffi/target/release/mempool_bindings.h"
+//#include "ffi/target/release/mempool_bindings.h"
 import "C"
 
 import (
@@ -686,4 +686,9 @@ func (mem *CListMempool) recheckTxs() {
 func (mem *CListMempool) Free() {
 	C.clist_mempool_free(mem.handle)
 	gMem = nil
+}
+
+//export rsNotifyTxsAvailable
+func rsNotifyTxsAvailable() {
+	
 }

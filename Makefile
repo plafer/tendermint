@@ -62,7 +62,12 @@ include tests.mk
 ###############################################################################
 
 build:
-# Build the rust bindings first
+	mkdir -p mempool/v0/ffi/target/release
+# Generate the C headers from rust that go will need
+	cd mempool/v0/ffi && cbindgen --crate clist-mempool-rs --output target/release/mempool_bindings.h --lang c
+# Generate the C headers from go that rust will need
+	cd mempool/v0 && go tool cgo --exportheader ffi/target/release/_cgo_bindings.h --objdir ffi/target/release clist_mempool.go 
+# Build the rust bindings
 	cd mempool/v0/ffi && cargo build --release
 	CGO_ENABLED=1 go build $(BUILD_FLAGS) -tags '$(BUILD_TAGS)' -o $(OUTPUT) ./cmd/tendermint/
 .PHONY: build
