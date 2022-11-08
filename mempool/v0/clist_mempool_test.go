@@ -705,6 +705,8 @@ func abciResponses(n int, code uint32) []*abci.ResponseDeliverTx {
 	return responses
 }
 
+// Rust ffi tests
+
 func TestAddRemove(t *testing.T) {
 	app := kvstore.NewApplication()
 	cc := proxy.NewLocalClientCreator(app)
@@ -804,4 +806,40 @@ func TestReapMaxBytesMaxGasSimple(t *testing.T) {
 			mp.RemoveTx(txs[i], nil, false)
 		}
 	}
+}
+
+// Simply tests that `Update` removes the txs from the mempool (no cache stuff)
+func TestUpdateSimple(t *testing.T) {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+
+	cfg := config.ResetTestRoot("mempool_test")
+
+	cfg.Mempool.MaxTxsBytes = 1111110
+	mp, cleanup := newMempoolWithAppAndConfig(cc, cfg)
+	defer cleanup()
+
+	assert.EqualValues(t, 0, mp.SizeBytes())
+
+	// generate small number of txs
+	nTxs := 10
+	txLen := 200
+	rawTxs := make([]types.Tx, nTxs)
+	memTxs := make([]tx.MempoolTx, nTxs)
+	for i := 0; i < nTxs; i++ {
+		rawTx := tmrand.Bytes(txLen)
+
+		rawTxs[i] = rawTx
+		memTxs[i] = tx.MempoolTx{Height: 10, GasWanted: 0, Tx: rawTx, Senders: sync.Map{}}
+
+		mp.AddTx(&memTxs[i])
+	}
+
+	assert.EqualValues(t, nTxs*txLen, mp.SizeBytes())
+	assert.EqualValues(t, nTxs, mp.Size())
+
+	mp.Update(10, rawTxs, nil, nil, nil)
+
+	assert.EqualValues(t, 0, mp.SizeBytes())
+	assert.EqualValues(t, 0, mp.Size())
 }
