@@ -110,7 +110,7 @@ func NewCListMempool(
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
-		handle: (C.struct_Handle)(C.clist_mempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
+		handle:        (C.struct_Handle)(C.clist_mempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
 	}
 
 	if cfg.CacheSize > 0 {
@@ -603,10 +603,6 @@ func (mem *CListMempool) Update(
 	preCheck mempool.PreCheckFunc,
 	postCheck mempool.PostCheckFunc,
 ) error {
-	// Set height
-	mem.height = height
-	mem.notifiedTxsAvailable = false
-
 	if preCheck != nil {
 		mem.preCheck = preCheck
 	}
@@ -614,45 +610,37 @@ func (mem *CListMempool) Update(
 		mem.postCheck = postCheck
 	}
 
-	for i, tx := range txs {
-		if deliverTxResponses[i].Code == abci.CodeTypeOK {
-			// Add valid committed tx to the cache (if missing).
-			_ = mem.cache.Push(tx)
-		} else if !mem.config.KeepInvalidTxsInCache {
-			// Allow invalid transactions to be resubmitted.
-			mem.cache.Remove(tx)
+	var raw_txs_slice = make([]C.struct_RawTx, len(txs))
+	for i := 0; i < len(txs); i++ {
+		raw_txs_slice[i] = C.struct_RawTx{
+			// FIXME: I'm not sure if the `CBytes` allocation is needed
+			tx:  (*C.uchar)(C.CBytes(txs[i])),
+			len: (C.ulong)(len(txs[i])),
 		}
+	}
 
-		// Remove committed tx from the mempool.
+	var raw_txs = C.struct_RawTxs{
+		// cgo quote:
+		// >In C, a function argument written as a fixed size array
+		// actually requires a pointer to the first element of the array. C
+		// compilers are aware of this calling convention and adjust the call
+		// accordingly, but Go cannot. In Go, you must pass the pointer to the
+		// first element explicitly: C.f(&C.x[0]).
 		//
-		// Note an evil proposer can drop valid txs!
-		// Mempool before:
-		//   100 -> 101 -> 102
-		// Block, proposed by an evil proposer:
-		//   101 -> 102
-		// Mempool after:
-		//   100
-		// https://github.com/tendermint/tendermint/issues/3322.
-		if e, ok := mem.txsMap.Load(tx.Key()); ok {
-			mem.RemoveTx(tx, e.(*clist.CElement), false)
-		}
+		// In that example, they use data coming from C. However I *think* you
+		// can also do it with a Go slice (i.e. that Go slice data is stored
+		// sequentially identically to C arrays)
+		txs: &raw_txs_slice[0],
+		len: (C.ulong)(len(raw_txs_slice)),
 	}
 
-	// Either recheck non-committed txs to see if they became invalid
-	// or just notify there're some txs left.
-	if mem.Size() > 0 {
-		if mem.config.Recheck {
-			mem.logger.Debug("recheck txs", "numtxs", mem.Size(), "height", height)
-			mem.recheckTxs()
-			// At this point, mem.txs are being rechecked.
-			// mem.recheckCursor re-scans mem.txs and possibly removes some txs.
-			// Before mem.Reap(), we should wait for mem.recheckCursor to be nil.
-		} else {
-			mem.notifyTxsAvailable()
-		}
+	C.clist_mempool_update(mem.handle, C.longlong(height), raw_txs)
+
+	// cleanup `CBytes` allocations 
+	for _, raw_tx := range raw_txs_slice {
+		C.free(unsafe.Pointer(raw_tx.tx))
 	}
 
-	// Update metrics
 	mem.metrics.Size.Set(float64(mem.Size()))
 
 	return nil
@@ -679,10 +667,10 @@ func (mem *CListMempool) recheckTxs() {
 	mem.proxyAppConn.FlushAsync()
 }
 
-/// Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
-/// Specifically, users of FFI types will need to manage Rust memory manually by making sure they
-/// deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
-/// that any concrete type that uses Rust in its implementation has a way to be cleaned up.
+// / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
+// / Specifically, users of FFI types will need to manage Rust memory manually by making sure they
+// / deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
+// / that any concrete type that uses Rust in its implementation has a way to be cleaned up.
 func (mem *CListMempool) Free() {
 	C.clist_mempool_free(mem.handle)
 	gMem = nil
@@ -690,5 +678,5 @@ func (mem *CListMempool) Free() {
 
 //export rsNotifyTxsAvailable
 func rsNotifyTxsAvailable() {
-	
+	gMem.notifyTxsAvailable()
 }

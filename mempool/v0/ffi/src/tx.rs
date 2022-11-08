@@ -1,5 +1,3 @@
-use std::hash::Hash;
-
 use sha2::{
     digest::generic_array::{typenum::U32, GenericArray},
     Digest, Sha256,

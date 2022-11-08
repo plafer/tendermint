@@ -11,6 +11,10 @@ use core::ffi::c_int;
 use linked_hash_map::LinkedHashMap;
 use tx::{hash_tx, MempoolTx, TxKeyHash};
 
+extern "C" {
+    fn rsNotifyTxsAvailable();
+}
+
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
 /// that for simplicity, we use the widest types possible (e.g. i64 for unsigned
 /// integers) to ensure compatibility between go and Rust on any system. There
@@ -22,10 +26,6 @@ pub struct MempoolConfig {
     max_tx_bytes: i64,
     /// Maximum number of txs in the mempool
     size: i64,
-    // Do not remove invalid transactions from the cache (default: false)
-    // Set to true if it's not possible for any invalid transaction to become
-    // valid again in the future.
-    keep_invalid_txs_in_cache: bool,
     recheck: bool,
 }
 
@@ -36,7 +36,22 @@ pub struct CListMempool {
     txs: LinkedHashMap<TxKeyHash, MempoolTx>,
     // size of the sum of all txs the mempool, in bytes
     tx_bytes: i64,
+    notified_txs_available: bool,
 }
+
+impl CListMempool {
+    fn remove_tx(&mut self, tx: &[u8]) {
+        let tx_hash = hash_tx(tx);
+
+        self.txs.remove(&tx_hash);
+        self.tx_bytes -= tx.len() as i64;
+    }
+
+    fn size(&self) -> usize {
+        self.txs.len()
+    }
+}
+
 
 static mut MEMPOOL: Option<CListMempool> = None;
 
@@ -51,7 +66,7 @@ pub struct Handle {
 pub unsafe extern "C" fn clist_mempool_new(
     max_tx_bytes: i64,
     size: i64,
-    keep_invalid_txs_in_cache: bool,
+    _keep_invalid_txs_in_cache: bool,
     recheck: bool,
     height: i64,
 ) -> Handle {
@@ -65,12 +80,12 @@ pub unsafe extern "C" fn clist_mempool_new(
         config: MempoolConfig {
             max_tx_bytes,
             size,
-            keep_invalid_txs_in_cache,
             recheck,
         },
         height,
         txs: LinkedHashMap::new(),
         tx_bytes: 0,
+        notified_txs_available: false,
     });
 
     Handle { handle: 0 }
@@ -79,7 +94,7 @@ pub unsafe extern "C" fn clist_mempool_new(
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
     if let Some(ref mempool) = MEMPOOL {
-        mempool.txs.len()
+        mempool.size()
     } else {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
@@ -113,6 +128,7 @@ pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size:
 }
 
 /// `tx` must not be stored by the Rust code
+/// TODO: use `RawTx`
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_add_tx(
     _mempool_handle: Handle,
@@ -153,25 +169,39 @@ pub unsafe extern "C" fn clist_mempool_remove_tx(
 ) {
     if let Some(ref mut mempool) = MEMPOOL {
         let tx = std::slice::from_raw_parts(tx, tx_len);
-        let tx_hash = hash_tx(tx);
-
-        mempool.txs.remove(&tx_hash);
-        mempool.tx_bytes -= tx_len as i64;
+        mempool.remove_tx(tx);
     } else {
         panic!("Mempool not initialized!");
     }
 }
 
+/// Represents a raw transaction across the go/rust boundary.
 #[repr(C)]
 pub struct RawTx {
     tx: *const u8,
     len: usize,
 }
 
+impl From<RawTx> for &[u8] {
+    fn from(raw_tx: RawTx) -> Self {
+        unsafe { std::slice::from_raw_parts(raw_tx.tx, raw_tx.len) }
+    }
+}
+
 #[repr(C)]
 pub struct RawTxs {
     txs: *const RawTx,
     len: usize,
+}
+
+impl From<RawTxs> for Vec<&[u8]> {
+    fn from(raw_txs: RawTxs) -> Self {
+        let a = unsafe { std::slice::from_raw_parts(raw_txs.txs, raw_txs.len) };
+
+        a.into_iter()
+            .map(|raw_tx| unsafe { std::slice::from_raw_parts(raw_tx.tx, raw_tx.len) })
+            .collect()
+    }
 }
 
 /// Returned memory must not be stored in go. In go, use of `C.GoBytes()` is recommended.
@@ -184,7 +214,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
 ) -> RawTxs {
     if let Some(ref mempool) = MEMPOOL {
         let mut txs_to_return: Vec<&MempoolTx> = Vec::new();
-        
+
         let mut running_size = 0;
         let mut running_gas = 0;
         for (_tx_hash, mem_tx) in mempool.txs.iter() {
@@ -222,6 +252,37 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
         }
     } else {
         panic!("Mempool not initialized!");
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_update(
+    _mempool_handle: Handle,
+    height: i64,
+    raw_txs: RawTxs,
+) {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    mempool.height = height;
+    mempool.notified_txs_available = true;
+
+    let raw_txs: Vec<&[u8]> = raw_txs.into();
+
+    for raw_tx in raw_txs {
+        // Note: our implementation currently has no cache
+        mempool.remove_tx(raw_tx);
+    }
+
+    if mempool.size() > 0 {
+        if mempool.config.recheck {
+            // TODO: recheckTxs
+        } else {
+            rsNotifyTxsAvailable();
+        }
     }
 }
 
