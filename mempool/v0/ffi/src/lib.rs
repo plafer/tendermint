@@ -50,8 +50,14 @@ impl CListMempool {
     fn size(&self) -> usize {
         self.txs.len()
     }
-}
 
+    fn is_full(&self, tx_size: i64) -> bool {
+        let mem_size = self.txs.len() as i64;
+        let mem_tx_bytes = self.tx_bytes;
+
+        mem_size >= self.config.size || (mem_tx_bytes + tx_size) > self.config.max_tx_bytes
+    }
+}
 
 static mut MEMPOOL: Option<CListMempool> = None;
 
@@ -93,13 +99,15 @@ pub unsafe extern "C" fn clist_mempool_new(
 
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
-    if let Some(ref mempool) = MEMPOOL {
-        mempool.size()
+    let mempool = if let Some(ref mempool) = MEMPOOL {
+        mempool
     } else {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
         panic!("Mempool not initialized!");
-    }
+    };
+
+    mempool.size()
 }
 
 #[no_mangle]
@@ -115,16 +123,15 @@ pub unsafe extern "C" fn clist_mempool_size_bytes(_mempool_handle: Handle) -> i6
 
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size: i64) -> bool {
-    if let Some(ref mempool) = MEMPOOL {
-        let mem_size = mempool.txs.len() as i64;
-        let mem_tx_bytes = mempool.tx_bytes;
-
-        mem_size >= mempool.config.size || (mem_tx_bytes + tx_size) > mempool.config.max_tx_bytes
+    let mempool = if let Some(ref mempool) = MEMPOOL {
+        mempool
     } else {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
         panic!("Mempool not initialized!");
-    }
+    };
+
+    mempool.is_full(tx_size)
 }
 
 /// `tx` must not be stored by the Rust code
