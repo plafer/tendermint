@@ -563,7 +563,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 	return txs
 }
 
-// Lock() must be help by the caller during execution.
+// Lock() must be held by the caller during execution.
 func (mem *CListMempool) Update(
 	height int64,
 	txs types.Txs,
@@ -596,8 +596,8 @@ func (mem *CListMempool) Update(
 		// first element explicitly: C.f(&C.x[0]).
 		//
 		// In that example, they use data coming from C. However I *think* you
-		// can also do it with a Go slice (i.e. that Go slice data is stored
-		// sequentially identically to C arrays)
+		// can also do it with a Go slice (i.e. that Go slice data is guaranteed
+		// to be stored sequentially identically to C arrays)
 		txs: &raw_txs_slice[0],
 		len: (C.ulong)(len(raw_txs_slice)),
 	}

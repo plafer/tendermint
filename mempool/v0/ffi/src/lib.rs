@@ -351,12 +351,9 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
         }
 
         {
-            let txs_to_return: Vec<_> = txs_to_return
+            let txs_to_return: Vec<RawTx> = txs_to_return
                 .into_iter()
-                .map(|mem_tx| RawTx {
-                    tx: mem_tx.tx.as_ptr(),
-                    len: mem_tx.tx.len(),
-                })
+                .map(|mem_tx| mem_tx.tx.as_slice().into())
                 .collect();
 
             RawTxs {
