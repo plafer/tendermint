@@ -13,6 +13,20 @@ use tx::{hash_tx, MempoolTx, TxKeyHash};
 
 extern "C" {
     fn rsNotifyTxsAvailable();
+
+    /// calls `mem.preCheck()` function in go.
+    /// Note that the `tx` argument is cached in go
+    /// Returns true if an error occured.
+    fn rsMemPreCheck() -> bool;
+
+    /// calls `mem.proxyAppConn.Error()` function in go.
+    /// Returns true if an error occured.
+    fn rsMemProxyAppConnError() -> bool;
+
+    /// calls `mem.proxyAppConn.CheckTxAsync()` function in go, and sets the
+    /// callback on the response object.
+    /// Returns true if an error occured.
+    fn rsMemProxyAppConnCheckTxAsync();
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
@@ -56,6 +70,32 @@ impl CListMempool {
         let mem_tx_bytes = self.tx_bytes;
 
         mem_size >= self.config.size || (mem_tx_bytes + tx_size) > self.config.max_tx_bytes
+    }
+
+    /// A return of `true` means that an error occured. Normally we would want
+    /// proper error reporting across the ffi boundary.
+    fn check_tx(&self, tx: &[u8]) -> bool {
+        let tx_size = tx.len() as i64;
+        if self.is_full(tx_size) {
+            return true;
+        }
+
+        if tx_size > self.config.max_tx_bytes {
+            // tx too large
+            return true;
+        }
+
+        if unsafe { rsMemPreCheck() } {
+            return true;
+        }
+
+        if unsafe { rsMemProxyAppConnError() } {
+            return true;
+        }
+
+        unsafe { rsMemProxyAppConnCheckTxAsync() };
+
+        false
     }
 }
 
@@ -195,6 +235,15 @@ impl From<RawTx> for &[u8] {
     }
 }
 
+impl From<&[u8]> for RawTx {
+    fn from(tx: &[u8]) -> Self {
+        RawTx {
+            tx: tx.as_ptr(),
+            len: tx.len(),
+        }
+    }
+}
+
 #[repr(C)]
 pub struct RawTxs {
     txs: *const RawTx,
@@ -291,6 +340,19 @@ pub unsafe extern "C" fn clist_mempool_update(
             rsNotifyTxsAvailable();
         }
     }
+}
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_check_tx(
+    _mempool_handle: Handle,
+    raw_tx: RawTx,
+) -> bool {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    mempool.check_tx(raw_tx.into())
 }
 
 #[no_mangle]

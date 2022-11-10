@@ -9,6 +9,7 @@
     + Seems like the worst of both go and rust worlds
     + See [Passing pointers](https://golang.google.cn/cmd/cgo/#hdr-Passing_pointers) section of cgo docs
     + e.g. "Go code may pass a Go pointer to C provided the Go memory to which it points does not contain any Go pointers." is easy to get wrong
+        + You can enable runtime checks with `GODEBUG=cgocheck=1` though
 + The lack of destructors in Go makes FFI ugly. Specifically, users of FFI types
   will need to manage Rust memory manually by making sure they deallocate any
   memory they use. And ultimately all interfaces will need to add a `Free()` to

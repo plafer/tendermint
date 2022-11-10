@@ -80,6 +80,11 @@ type CListMempool struct {
 	metrics *mempool.Metrics
 
 	handle C.struct_Handle
+
+	// Workaround the fact that function pointers can't be passed to Rust.
+	checkTxTx     types.Tx
+	checkTxCb     func(*abci.Response)
+	checkTxTxInfo *mempool.TxInfo
 }
 
 var _ mempool.Mempool = &CListMempool{}
@@ -245,51 +250,36 @@ func (mem *CListMempool) CheckTx(
 	// use defer to unlock mutex because application (*local client*) might panic
 	defer mem.updateMtx.RUnlock()
 
-	txSize := len(tx)
+	// Note: those are only needed by synchronous calls into Go that
+	// `clist_mempool_check_tx()` will make
+	mem.checkTxTx = tx
+	mem.checkTxCb = cb
+	mem.checkTxTxInfo = &txInfo
 
-	if err := mem.isFull(txSize); err != nil {
-		return err
+	raw_tx := C.struct_RawTx{
+		tx:  (*C.uchar)(C.CBytes(tx)),
+		len: (C.ulong)(len(tx)),
 	}
 
-	if txSize > mem.config.MaxTxBytes {
-		return mempool.ErrTxTooLarge{
-			Max:    mem.config.MaxTxBytes,
-			Actual: txSize,
+	var err error = nil
+
+	if C.clist_mempool_check_tx(mem.handle, raw_tx) {
+		// FIXME: return proper errors from Rust
+		err = mempool.ErrMempoolIsFull{
+			NumTxs:      0,
+			MaxTxs:      0,
+			TxsBytes:    0,
+			MaxTxsBytes: 0,
 		}
 	}
 
-	if mem.preCheck != nil {
-		if err := mem.preCheck(tx); err != nil {
-			return mempool.ErrPreCheck{
-				Reason: err,
-			}
-		}
-	}
+	C.free(unsafe.Pointer(raw_tx.tx))
 
-	// NOTE: proxyAppConn may error if tx buffer is full
-	if err := mem.proxyAppConn.Error(); err != nil {
-		return err
-	}
+	mem.checkTxTx = nil
+	mem.checkTxCb = nil
+	mem.checkTxTxInfo = nil
 
-	if !mem.cache.Push(tx) { // if the transaction already exists in the cache
-		// Record a new sender for a tx we've already seen.
-		// Note it's possible a tx is still in the cache but no longer in the mempool
-		// (eg. after committing a block, txs are removed from mempool but not cache),
-		// so we only record the sender for txs still in the mempool.
-		if e, ok := mem.txsMap.Load(tx.Key()); ok {
-			memTx := e.(*clist.CElement).Value.(*v0tx.MempoolTx)
-			memTx.Senders.LoadOrStore(txInfo.SenderID, true)
-			// TODO: consider punishing peer for dups,
-			// its non-trivial since invalid txs can become valid,
-			// but they can spam the same tx with little cost to them atm.
-		}
-		return mempool.ErrTxInCache
-	}
-
-	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
-	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
-
-	return nil
+	return err
 }
 
 // Global callback that will be called after every ABCI response.
@@ -636,7 +626,7 @@ func (mem *CListMempool) Update(
 
 	C.clist_mempool_update(mem.handle, C.longlong(height), raw_txs)
 
-	// cleanup `CBytes` allocations 
+	// cleanup `CBytes` allocations
 	for _, raw_tx := range raw_txs_slice {
 		C.free(unsafe.Pointer(raw_tx.tx))
 	}
@@ -679,4 +669,35 @@ func (mem *CListMempool) Free() {
 //export rsNotifyTxsAvailable
 func rsNotifyTxsAvailable() {
 	gMem.notifyTxsAvailable()
+}
+
+//export rsMemPreCheck
+func rsMemPreCheck() C.bool {
+	if gMem.preCheck != nil {
+		if err := gMem.preCheck(gMem.checkTxTx); err != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+//export rsMemProxyAppConnError
+func rsMemProxyAppConnError() C.bool {
+	// NOTE: proxyAppConn may error if tx buffer is full
+	if err := gMem.proxyAppConn.Error(); err != nil {
+		return true
+	}
+
+	return false
+}
+
+//export rsMemProxyAppConnCheckTxAsync
+func rsMemProxyAppConnCheckTxAsync() {
+	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: gMem.checkTxTx})
+	reqRes.SetCallback(gMem.reqResCb(
+		gMem.checkTxTx,
+		gMem.checkTxTxInfo.SenderID,
+		gMem.checkTxTxInfo.SenderP2PID,
+		gMem.checkTxCb))
 }
