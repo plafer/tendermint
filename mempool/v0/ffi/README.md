@@ -26,6 +26,8 @@
 + We're allowed to pass Go pointers across the ffi boundary, but we're not
   allowed to store the pointers after the function call returns.
   + This leads to extra allocations that weren't needed in the go-only code
+  + We also need to store the current mempool in a go module variable, for when rust code needs to perform an operation with it
+    + e.g. see cgo-exported `rs*` functions
 + Can no longer easily cross-compile
 + Use of go `unsafe` package
     + From package docs: Packages that import unsafe may be non-portable and are

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sha2::{
     digest::generic_array::{typenum::U32, GenericArray},
     Digest, Sha256,
@@ -6,12 +8,14 @@ use sha2::{
 /// Type that key hashes have
 pub type TxKeyHash = GenericArray<u8, U32>;
 
+#[derive(Hash, PartialEq, Eq)]
+pub struct PeerId(pub u16);
+
 pub struct MempoolTx {
     pub height: i64,
     pub gas_wanted: i64,
     pub tx: Vec<u8>,
-    // also (add later)
-    // senders: PeerId -> bool
+    pub senders: HashMap<PeerId, bool>,
 }
 
 // TODO: Investigate using std::hash instead

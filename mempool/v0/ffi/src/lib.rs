@@ -7,9 +7,12 @@
 mod tx;
 
 use core::ffi::c_int;
+use std::collections::HashMap;
 
 use linked_hash_map::LinkedHashMap;
-use tx::{hash_tx, MempoolTx, TxKeyHash};
+use tx::{hash_tx, MempoolTx, PeerId, TxKeyHash};
+
+const ABCI_CODE_TYPE_OK: u32 = 0;
 
 extern "C" {
     fn rsNotifyTxsAvailable();
@@ -54,6 +57,11 @@ pub struct CListMempool {
 }
 
 impl CListMempool {
+    fn add_tx(&mut self, mem_tx: MempoolTx) {
+        self.tx_bytes += mem_tx.tx.len() as i64;
+        self.txs.insert(hash_tx(&mem_tx.tx), mem_tx);
+    }
+
     fn remove_tx(&mut self, tx: &[u8]) {
         let tx_hash = hash_tx(tx);
 
@@ -96,6 +104,39 @@ impl CListMempool {
         unsafe { rsMemProxyAppConnCheckTxAsync() };
 
         false
+    }
+
+    /// impl of resCbFirstTime after the postCheck function is called in go
+    fn res_cb_first_time(
+        &mut self,
+        check_tx_code: u32,
+        has_post_check_err: bool,
+        raw_tx: &[u8],
+        gas_wanted: i64,
+        peer_id: u16,
+    ) {
+        if check_tx_code != ABCI_CODE_TYPE_OK || has_post_check_err {
+            // We currently don't log or maintain metrics, nor have a cache, so nothing to do here
+            return;
+        }
+
+        if self.is_full(raw_tx.len() as i64) {
+            return;
+        }
+
+        let mem_tx = MempoolTx {
+            height: self.height,
+            gas_wanted,
+            tx: Vec::from(raw_tx),
+            senders: {
+                let mut hash_map = HashMap::new();
+                hash_map.insert(PeerId(peer_id), true);
+                hash_map
+            },
+        };
+
+        self.add_tx(mem_tx);
+        unsafe { rsNotifyTxsAvailable() };
     }
 }
 
@@ -184,24 +225,23 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
     tx: *const u8,
     tx_len: usize,
 ) {
-    if let Some(ref mut mempool) = MEMPOOL {
-        let tx = std::slice::from_raw_parts(tx, tx_len);
-        let tx_vec: Vec<u8> = {
-            let mut tx_vec = Vec::with_capacity(tx_len);
-            tx_vec.extend_from_slice(tx);
-            tx_vec
-        };
-        let mempool_tx = MempoolTx {
-            height,
-            gas_wanted,
-            tx: tx_vec,
-        };
-        mempool.txs.insert(hash_tx(&mempool_tx.tx), mempool_tx);
-
-        mempool.tx_bytes += tx_len as i64;
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
     } else {
         panic!("Mempool not initialized!");
-    }
+    };
+
+    let tx = std::slice::from_raw_parts(tx, tx_len);
+    let tx = Vec::from(tx);
+
+    let mempool_tx = MempoolTx {
+        height,
+        gas_wanted,
+        tx,
+        senders: HashMap::new(),
+    };
+
+    mempool.add_tx(mempool_tx);
 }
 
 /// `tx` must not be stored by the Rust code
@@ -342,10 +382,7 @@ pub unsafe extern "C" fn clist_mempool_update(
     }
 }
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_check_tx(
-    _mempool_handle: Handle,
-    raw_tx: RawTx,
-) -> bool {
+pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx: RawTx) -> bool {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
     } else {
