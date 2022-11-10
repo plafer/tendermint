@@ -294,6 +294,7 @@ func (mem *CListMempool) CheckTx(
 // here.
 func (mem *CListMempool) globalCb(req *abci.Request, res *abci.Response) {
 	if mem.recheckCursor == nil {
+		// Q: this is the first time it was called?
 		return
 	}
 
@@ -670,11 +671,14 @@ func rsMemProxyAppConnError() C.bool {
 }
 
 //export rsMemProxyAppConnCheckTxAsync
-func rsMemProxyAppConnCheckTxAsync() {
+func rsMemProxyAppConnCheckTxAsync(setCallback C.bool) {
 	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: gMem.checkTxTx})
-	reqRes.SetCallback(gMem.reqResCb(
-		gMem.checkTxTx,
-		gMem.checkTxTxInfo.SenderID,
-		gMem.checkTxTxInfo.SenderP2PID,
-		gMem.checkTxCb))
+
+	if setCallback {
+		reqRes.SetCallback(gMem.reqResCb(
+			gMem.checkTxTx,
+			gMem.checkTxTxInfo.SenderID,
+			gMem.checkTxTxInfo.SenderP2PID,
+			gMem.checkTxCb))
+	}
 }

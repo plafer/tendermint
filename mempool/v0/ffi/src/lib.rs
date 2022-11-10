@@ -26,10 +26,10 @@ extern "C" {
     /// Returns true if an error occured.
     fn rsMemProxyAppConnError() -> bool;
 
-    /// calls `mem.proxyAppConn.CheckTxAsync()` function in go, and sets the
+    /// calls `mem.proxyAppConn.CheckTxAsync()` function in go, and can set the
     /// callback on the response object.
     /// Returns true if an error occured.
-    fn rsMemProxyAppConnCheckTxAsync();
+    fn rsMemProxyAppConnCheckTxAsync(set_callback: bool);
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
@@ -101,7 +101,7 @@ impl CListMempool {
             return true;
         }
 
-        unsafe { rsMemProxyAppConnCheckTxAsync() };
+        unsafe { rsMemProxyAppConnCheckTxAsync(true) };
 
         false
     }
