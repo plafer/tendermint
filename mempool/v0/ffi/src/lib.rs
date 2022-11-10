@@ -105,6 +105,24 @@ impl CListMempool {
 
         false
     }
+    
+    fn update(&mut self, height: i64, raw_txs: &[&[u8]]) {
+        self.height = height;
+        self.notified_txs_available = true;
+
+        for raw_tx in raw_txs {
+            // Note: our implementation currently has no cache
+            self.remove_tx(raw_tx);
+        }
+
+        if self.size() > 0 {
+            if self.config.recheck {
+                // TODO: recheckTxs
+            } else {
+                unsafe { rsNotifyTxsAvailable() };
+            }
+        }
+    }
 
     /// impl of resCbFirstTime after the postCheck function is called in go
     fn res_cb_first_time(
@@ -363,23 +381,8 @@ pub unsafe extern "C" fn clist_mempool_update(
         panic!("Mempool not initialized!");
     };
 
-    mempool.height = height;
-    mempool.notified_txs_available = true;
-
     let raw_txs: Vec<&[u8]> = raw_txs.into();
-
-    for raw_tx in raw_txs {
-        // Note: our implementation currently has no cache
-        mempool.remove_tx(raw_tx);
-    }
-
-    if mempool.size() > 0 {
-        if mempool.config.recheck {
-            // TODO: recheckTxs
-        } else {
-            rsNotifyTxsAvailable();
-        }
-    }
+    mempool.update(height, raw_txs.as_slice());
 }
 
 #[no_mangle]
