@@ -381,6 +381,7 @@ pub unsafe extern "C" fn clist_mempool_update(
         }
     }
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx: RawTx) -> bool {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
@@ -390,6 +391,30 @@ pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx:
     };
 
     mempool.check_tx(raw_tx.into())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_res_cb_first_time(
+    _mempool_handle: Handle,
+    check_tx_code: u32,
+    has_post_check_err: bool,
+    raw_tx: RawTx,
+    gas_wanted: i64,
+    peer_id: u16,
+) {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    mempool.res_cb_first_time(
+        check_tx_code,
+        has_post_check_err,
+        raw_tx.into(),
+        gas_wanted,
+        peer_id,
+    )
 }
 
 #[no_mangle]

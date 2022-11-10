@@ -58,6 +58,7 @@ type CListMempool struct {
 	// FIXME: find a better solution (e.g. atomics in Rust?)
 	sizeMtx      tmsync.RWMutex
 	addRemoveMtx tmsync.Mutex
+	reqResCbMtx  tmsync.Mutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
@@ -319,15 +320,15 @@ func (mem *CListMempool) reqResCb(
 	externalCb func(*abci.Response),
 ) func(res *abci.Response) {
 	return func(res *abci.Response) {
-		if mem.recheckCursor != nil {
-			// this should never happen
-			panic("recheck cursor is not nil in reqResCb")
+		{
+			mem.reqResCbMtx.Lock()
+			defer mem.reqResCbMtx.Unlock()
+
+			mem.resCbFirstTime(tx, peerID, peerP2PID, res)
+
+			// update metrics
+			mem.metrics.Size.Set(float64(mem.Size()))
 		}
-
-		mem.resCbFirstTime(tx, peerID, peerP2PID, res)
-
-		// update metrics
-		mem.metrics.Size.Set(float64(mem.Size()))
 
 		// passed in by the caller of CheckTx, eg. the RPC
 		if externalCb != nil {
@@ -411,54 +412,27 @@ func (mem *CListMempool) resCbFirstTime(
 ) {
 	switch r := res.Value.(type) {
 	case *abci.Response_CheckTx:
-		var postCheckErr error
+		var postCheckErr error = nil
 		if mem.postCheck != nil {
 			postCheckErr = mem.postCheck(tx, r.CheckTx)
 		}
 
-		// TODO: add a mutex somewhere around this callback
-
-		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
-			// Check mempool isn't full again to reduce the chance of exceeding the
-			// limits.
-			if err := mem.isFull(len(tx)); err != nil {
-				// remove from cache (mempool might have a space later)
-				mem.cache.Remove(tx)
-				mem.logger.Error(err.Error())
-				return
-			}
-
-			memTx := &v0tx.MempoolTx{
-				Height:    mem.height,
-				GasWanted: r.CheckTx.GasWanted,
-				Tx:        tx,
-			}
-			memTx.Senders.Store(peerID, true)
-			mem.AddTx(memTx)
-			mem.logger.Debug(
-				"added good transaction",
-				"tx", types.Tx(tx).Hash(),
-				"res", r,
-				"height", memTx.Height,
-				"total", mem.Size(),
-			)
-			mem.notifyTxsAvailable()
-		} else {
-			// ignore bad transaction
-			mem.logger.Debug(
-				"rejected bad transaction",
-				"tx", types.Tx(tx).Hash(),
-				"peerID", peerP2PID,
-				"res", r,
-				"err", postCheckErr,
-			)
-			mem.metrics.FailedTxs.Add(1)
-
-			if !mem.config.KeepInvalidTxsInCache {
-				// remove from cache (it might be good later)
-				mem.cache.Remove(tx)
-			}
+		hasPostCheckError := postCheckErr != nil
+		raw_tx := C.struct_RawTx{
+			tx:  (*C.uchar)(C.CBytes(tx)),
+			len: (C.ulong)(len(tx)),
 		}
+
+		C.clist_mempool_res_cb_first_time(
+			mem.handle, 
+			C.uint(r.CheckTx.Code),
+			C.bool(hasPostCheckError),
+			raw_tx,
+			C.longlong(r.CheckTx.GasWanted), 
+			C.ushort(peerID),
+		)
+
+		C.free(unsafe.Pointer(raw_tx.tx))
 
 	default:
 		// ignore other messages
