@@ -302,6 +302,8 @@ impl From<&[u8]> for RawTx {
     }
 }
 
+/// Transactions that were allocated and owned by Go.
+/// TODO: Rename to `GoRawTxs`
 #[repr(C)]
 pub struct RawTxs {
     txs: *const RawTx,
@@ -318,14 +320,34 @@ impl From<RawTxs> for Vec<&[u8]> {
     }
 }
 
-/// Returned memory must not be stored in go. In go, use of `C.GoBytes()` is recommended.
+/// Transactions that were allocated and owned by Rust.
+/// Must be deallocated from Go with `clist_raw_txs_free`.
+#[repr(C)]
+pub struct RustRawTxs {
+    txs: *const RawTx,
+    len: usize,
+    capacity: usize,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw_txs: RustRawTxs) {
+    let _vec = Vec::from_raw_parts(raw_txs.txs.cast_mut(), raw_txs.len, raw_txs.capacity);
+
+    // _vec dropped and memory freed
+}
+
+
+/// Returned memory must not be stored in go.
+/// In go, use of `C.GoBytes()` is recommended.
 /// Does not remove the transactions from the mempool.
+/// Returned transactions will now be owned by Go and must be freed using
+/// `clist_mempool_raw_free()`
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     _mempool_handle: Handle,
     max_bytes: i64,
     max_gas: i64,
-) -> RawTxs {
+) -> RustRawTxs {
     if let Some(ref mempool) = MEMPOOL {
         let mut txs_to_return: Vec<&MempoolTx> = Vec::new();
 
@@ -356,9 +378,12 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
                 .map(|mem_tx| mem_tx.tx.as_slice().into())
                 .collect();
 
-            RawTxs {
-                txs: txs_to_return.as_ptr(),
-                len: txs_to_return.len(),
+            let num_txs_to_return = txs_to_return.len();
+            let capacity = txs_to_return.capacity();
+            RustRawTxs {
+                txs: txs_to_return.leak().as_ptr(),
+                len: num_txs_to_return,
+                capacity
             }
         }
     } else {

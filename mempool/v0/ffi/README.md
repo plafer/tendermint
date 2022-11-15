@@ -16,6 +16,7 @@
   ensure that any concrete type that uses Rust in its implementation has a way
   to be cleaned up.
   + e.g. see `CListMempool.Free()` which imposes `Mempool.Free()`
+  + e.g. see `clist_mempool_raw_txs_free` 
 + Some things need to be done in Go
     + e.g.
         + interaction with channels
