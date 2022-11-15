@@ -33,6 +33,9 @@
 + Use of go `unsafe` package
     + From package docs: Packages that import unsafe may be non-portable and are
       not protected by the Go 1 compatibility guidelines. 
++ Any data structure that needs to cross the boundary needs to be converted to its "raw format"
+    + Creates extra complexity, and possibly extra allocations
+    + Sometimes I use a workaround (see go's `CListMempool.checkTx*` variables)
 
 # General notes
 + There are concurrent execution patterns from the go mempool design that violate rust's memory model

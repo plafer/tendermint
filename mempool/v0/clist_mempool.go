@@ -84,9 +84,12 @@ type CListMempool struct {
 	handle C.struct_Handle
 
 	// Workaround the fact that function pointers can't be passed to Rust.
+	// CheckTx
 	checkTxTx     types.Tx
 	checkTxCb     func(*abci.Response)
 	checkTxTxInfo *mempool.TxInfo
+	// resCbRecheck
+	recheckResponseCheckTx *abci.ResponseCheckTx
 }
 
 var _ mempool.Mempool = &CListMempool{}
@@ -448,6 +451,9 @@ func (mem *CListMempool) resCbFirstTime(
 func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 	switch r := res.Value.(type) {
 	case *abci.Response_CheckTx:
+		// Workaround: cache values
+		mem.recheckResponseCheckTx = r.CheckTx
+
 		tx := req.GetCheckTx().Tx
 		memTx := mem.recheckCursor.Value.(*v0tx.MempoolTx)
 
@@ -506,6 +512,9 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 				mem.notifyTxsAvailable()
 			}
 		}
+
+		// Workaround: Clean cache
+		mem.recheckResponseCheckTx = nil
 	default:
 		// ignore other messages
 	}
@@ -634,11 +643,23 @@ func rsNotifyTxsAvailable() {
 //export rsMemPreCheck
 func rsMemPreCheck() C.bool {
 	if gMem.preCheck != nil {
-		if err := gMem.preCheck(gMem.checkTxTx); err != nil {
-			return true
-		}
+		return gMem.preCheck(gMem.checkTxTx) != nil
 	}
 
+	// false if no error
+	return false
+}
+
+//export rsMemPostCheck
+func rsMemPostCheck(rawTx C.RawTx) C.bool {
+	// Note: `C.GoBytes` makes a copy of the data, and the new memory is managed by Go
+	// (i.e. garbage collected)
+	tx := C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len))
+	if gMem.postCheck != nil {
+		return gMem.postCheck(tx, gMem.recheckResponseCheckTx) != nil
+	}
+
+	// false if no error
 	return false
 }
 
