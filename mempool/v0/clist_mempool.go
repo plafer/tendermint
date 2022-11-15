@@ -9,6 +9,7 @@ import "C"
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -540,7 +541,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	txs := make([]types.Tx, len(rust_raw_txs_slice))
 	for i := 0; i < len(txs); i++ {
 		// allocate new memory since `raw_txs` is owned by Rust
-		txs[i] = C.GoBytes(unsafe.Pointer(&rust_raw_txs_slice[i].tx), C.int(rust_raw_txs_slice[i].len))
+		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].tx), C.int(rust_raw_txs_slice[i].len))
 	}
 
 	C.clist_mempool_raw_txs_free(mem.handle, rust_raw_txs)
@@ -673,10 +674,18 @@ func rsMemProxyAppConnError() C.bool {
 }
 
 //export rsMemProxyAppConnCheckTxAsync
-func rsMemProxyAppConnCheckTxAsync(setCallback C.bool) {
-	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: gMem.checkTxTx})
+func rsMemProxyAppConnCheckTxAsync(rawTx C.RawTx, setCallback C.bool) {
+	// Note: `C.GoBytes` makes a copy of the data, and the new memory is managed by Go
+	// (i.e. garbage collected)
+	tx := C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len))
+	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
 
 	if setCallback {
+		// TODO: remove this check
+		if !reflect.DeepEqual(tx, gMem.checkTxTx) {
+			panic("tx not properly converted")
+		}
+
 		reqRes.SetCallback(gMem.reqResCb(
 			gMem.checkTxTx,
 			gMem.checkTxTxInfo.SenderID,
