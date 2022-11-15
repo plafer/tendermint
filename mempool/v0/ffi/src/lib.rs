@@ -30,6 +30,9 @@ extern "C" {
     /// callback on the response object.
     /// Returns true if an error occured.
     fn rsMemProxyAppConnCheckTxAsync(raw_tx: RawTx, set_callback: bool);
+
+    /// calls `mem.proxyAppConn.FlushAsync()` function in go
+    fn rsMemProxyAppConnFlushAsync();
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
@@ -120,9 +123,10 @@ impl CListMempool {
                 // NOTE (from original implementation): globalCb may be called concurrently
                 // TODO: make sure this is legal in this impl
                 for (_, mem_tx) in self.txs.iter() {
-
-
+                    let raw_tx = mem_tx.tx.as_slice().into();
+                    unsafe { rsMemProxyAppConnCheckTxAsync(raw_tx, false) };
                 }
+                unsafe { rsMemProxyAppConnFlushAsync() };
             } else {
                 unsafe { rsNotifyTxsAvailable() };
             }

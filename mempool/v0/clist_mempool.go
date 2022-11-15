@@ -693,3 +693,8 @@ func rsMemProxyAppConnCheckTxAsync(rawTx C.RawTx, setCallback C.bool) {
 			gMem.checkTxCb))
 	}
 }
+
+//export rsMemProxyAppConnFlushAsync
+func rsMemProxyAppConnFlushAsync() {
+	gMem.proxyAppConn.FlushAsync()
+}
