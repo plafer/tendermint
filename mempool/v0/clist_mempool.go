@@ -617,27 +617,6 @@ func (mem *CListMempool) Update(
 	return nil
 }
 
-func (mem *CListMempool) recheckTxs() {
-	if mem.Size() == 0 {
-		panic("recheckTxs is called, but the mempool is empty")
-	}
-
-	mem.recheckCursor = mem.txs.Front()
-	mem.recheckEnd = mem.txs.Back()
-
-	// Push txs to proxyAppConn
-	// NOTE: globalCb may be called concurrently.
-	for e := mem.txs.Front(); e != nil; e = e.Next() {
-		memTx := e.Value.(*v0tx.MempoolTx)
-		mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{
-			Tx:   memTx.Tx,
-			Type: abci.CheckTxType_Recheck,
-		})
-	}
-
-	mem.proxyAppConn.FlushAsync()
-}
-
 // / Frees up the memory allocated in Rust for the mempool. The lack of destructors in Go makes FFI ugly.
 // / Specifically, users of FFI types will need to manage Rust memory manually by making sure they
 // / deallocate any memory they use. And ultimately all interfaces will need to add a `Free()` to ensure
