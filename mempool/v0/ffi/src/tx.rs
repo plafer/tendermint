@@ -8,9 +8,10 @@ use sha2::{
 /// Type that key hashes have
 pub type TxKeyHash = GenericArray<u8, U32>;
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct PeerId(pub u16);
 
+#[derive(Clone)]
 pub struct MempoolTx {
     pub height: i64,
     pub gas_wanted: i64,

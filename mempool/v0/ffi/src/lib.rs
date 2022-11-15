@@ -54,9 +54,13 @@ pub struct CListMempool {
     height: i64,
     /// Implements both go's `tx` and `txsMap`
     txs: LinkedHashMap<TxKeyHash, MempoolTx>,
-    // size of the sum of all txs the mempool, in bytes
+    /// size of the sum of all txs the mempool, in bytes
     tx_bytes: i64,
     notified_txs_available: bool,
+
+    /// List of transactions left to recheck after an `update()`.
+    /// This is done asynchronously over multiple calls.
+    recheck_txs: Vec<MempoolTx>,
 }
 
 impl CListMempool {
@@ -108,7 +112,7 @@ impl CListMempool {
 
         false
     }
-    
+
     fn update(&mut self, height: i64, raw_txs: &[&[u8]]) {
         self.height = height;
         self.notified_txs_available = true;
@@ -120,8 +124,15 @@ impl CListMempool {
 
         if self.size() > 0 {
             if self.config.recheck {
+                // FIXME: I don't think we have any guarantee we'll never hit this
+                assert!(self.recheck_txs.is_empty());
+                self.recheck_txs
+                    .extend(self.txs.iter().map(|(_, mem_tx)| mem_tx.clone()));
+
                 // NOTE (from original implementation): globalCb may be called concurrently
                 // TODO: make sure this is legal in this impl
+                // try: have `globalCb` take the `updateMtx` (which is held by caller when this runs)
+                // make sure we don't deadlock though.
                 for (_, mem_tx) in self.txs.iter() {
                     let raw_tx = mem_tx.tx.as_slice().into();
                     unsafe { rsMemProxyAppConnCheckTxAsync(raw_tx, false) };
@@ -165,6 +176,8 @@ impl CListMempool {
         self.add_tx(mem_tx);
         unsafe { rsNotifyTxsAvailable() };
     }
+
+    fn res_cb_recheck(&self, tx: &[u8]) {}
 }
 
 static mut MEMPOOL: Option<CListMempool> = None;
@@ -200,6 +213,7 @@ pub unsafe extern "C" fn clist_mempool_new(
         txs: LinkedHashMap::new(),
         tx_bytes: 0,
         notified_txs_available: false,
+        recheck_txs: Vec::new(),
     });
 
     Handle { handle: 0 }
@@ -345,7 +359,6 @@ pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw
     // _vec dropped and memory freed
 }
 
-
 /// Returned memory must not be stored in go.
 /// In go, use of `C.GoBytes()` is recommended.
 /// Does not remove the transactions from the mempool.
@@ -392,7 +405,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
             RustRawTxs {
                 txs: txs_to_return.leak().as_ptr(),
                 len: num_txs_to_return,
-                capacity
+                capacity,
             }
         }
     } else {
