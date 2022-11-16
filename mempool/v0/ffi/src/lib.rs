@@ -22,6 +22,10 @@ extern "C" {
     /// Returns true if an error occured.
     fn rsMemPreCheck() -> bool;
 
+    /// calls `mem.postCheck()` function in go.
+    /// Returns true if an error occured.
+    fn rsMemPostCheck(tx: RawTx) -> bool;
+
     /// calls `mem.proxyAppConn.Error()` function in go.
     /// Returns true if an error occured.
     fn rsMemProxyAppConnError() -> bool;
@@ -177,7 +181,29 @@ impl CListMempool {
         unsafe { rsNotifyTxsAvailable() };
     }
 
-    fn res_cb_recheck(&self, tx: &[u8]) {}
+    fn res_cb_recheck(&mut self, check_tx_code: u32, raw_tx: &[u8]) {
+        while let Some(next_mem_tx) = self.recheck_txs.pop() {
+            // FIXME: Improvement: store hashes only in `self.recheck_txs`
+            if next_mem_tx.tx.as_slice() == raw_tx {
+                break;
+            }
+
+            // Txs didn't match, move on to the next one
+            println!("re-Check transaction mismatch.");
+        }
+
+        let has_post_check_error = unsafe { rsMemPostCheck(raw_tx.into()) };
+
+        if (check_tx_code == ABCI_CODE_TYPE_OK) && !has_post_check_error {
+            // nothing to do
+        } else {
+            self.remove_tx(raw_tx);
+        }
+
+        if self.size() > 0 {
+            unsafe { rsNotifyTxsAvailable() };
+        }
+    }
 }
 
 static mut MEMPOOL: Option<CListMempool> = None;
