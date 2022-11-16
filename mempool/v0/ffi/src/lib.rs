@@ -491,6 +491,21 @@ pub unsafe extern "C" fn clist_mempool_res_cb_first_time(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn clist_mempool_res_cb_recheck(
+    _mempool_handle: Handle,
+    check_tx_code: u32,
+    raw_tx: RawTx,
+) {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    mempool.res_cb_recheck(check_tx_code, raw_tx.into())
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
     if let None = MEMPOOL {
         // Panicking across an FFI boundary is undefined behavior. However,
