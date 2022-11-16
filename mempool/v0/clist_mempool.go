@@ -7,7 +7,6 @@ package v0
 import "C"
 
 import (
-	"bytes"
 	"errors"
 	"reflect"
 	"sync"
@@ -455,63 +454,14 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 		mem.recheckResponseCheckTx = r.CheckTx
 
 		tx := req.GetCheckTx().Tx
-		memTx := mem.recheckCursor.Value.(*v0tx.MempoolTx)
-
-		// Search through the remaining list of tx to recheck for a transaction that matches
-		// the one we received from the ABCI application.
-		for {
-			if bytes.Equal(tx, memTx.Tx) {
-				// We've found a tx in the recheck list that matches the tx that we
-				// received from the ABCI application.
-				// Break, and use this transaction for further checks.
-				break
-			}
-
-			mem.logger.Error(
-				"re-CheckTx transaction mismatch",
-				"got", types.Tx(tx),
-				"expected", memTx.Tx,
-			)
-
-			if mem.recheckCursor == mem.recheckEnd {
-				// we reached the end of the recheckTx list without finding a tx
-				// matching the one we received from the ABCI application.
-				// Return without processing any tx.
-				mem.recheckCursor = nil
-				return
-			}
-
-			mem.recheckCursor = mem.recheckCursor.Next()
-			memTx = mem.recheckCursor.Value.(*v0tx.MempoolTx)
+		raw_tx := C.struct_RawTx{
+			tx:  (*C.uchar)(C.CBytes(tx)),
+			len: (C.ulong)(len(tx)),
 		}
 
-		var postCheckErr error
-		if mem.postCheck != nil {
-			postCheckErr = mem.postCheck(tx, r.CheckTx)
-		}
+		C.clist_mempool_res_cb_recheck(mem.handle, C.uint(r.CheckTx.Code), raw_tx)
 
-		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
-			// Good, nothing to do.
-		} else {
-			// Tx became invalidated due to newly committed block.
-			mem.logger.Debug("tx is no longer valid", "tx", types.Tx(tx).Hash(), "res", r, "err", postCheckErr)
-			// NOTE: we remove tx from the cache because it might be good later
-			mem.RemoveTx(tx, mem.recheckCursor, !mem.config.KeepInvalidTxsInCache)
-		}
-		if mem.recheckCursor == mem.recheckEnd {
-			mem.recheckCursor = nil
-		} else {
-			mem.recheckCursor = mem.recheckCursor.Next()
-		}
-		if mem.recheckCursor == nil {
-			// Done!
-			mem.logger.Debug("done rechecking txs")
-
-			// incase the recheck removed all txs
-			if mem.Size() > 0 {
-				mem.notifyTxsAvailable()
-			}
-		}
+		C.free(unsafe.Pointer(raw_tx.tx))
 
 		// Workaround: Clean cache
 		mem.recheckResponseCheckTx = nil
