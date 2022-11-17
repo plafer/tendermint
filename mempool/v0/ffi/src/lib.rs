@@ -91,6 +91,11 @@ impl CListMempool {
         mem_size >= self.config.size || (mem_tx_bytes + tx_size) > self.config.max_tx_bytes
     }
 
+    /// Returns the first tx in the mempool, or `None` if the mempool is empty
+    fn front(&self) -> Option<&MempoolTx> {
+        self.txs.front().map(|(_tx_hash, tx)| tx)
+    }
+
     /// A return of `true` means that an error occured. Normally we would want
     /// proper error reporting across the ffi boundary.
     fn check_tx(&self, tx: &[u8]) -> bool {
@@ -393,7 +398,7 @@ pub struct RawMempoolTx {
     /// Owned by Rust. This should be thought of as a view in the mempool.
     pub tx: RawTx,
     // Owned by Go; should be freed on a call to free() this struct
-    pub senders: *mut u16,
+    pub senders: *const u16,
     pub senders_len: usize,
     /// Necessary to be able to appropriately cleanup `RawMempoolTx`
     pub senders_capacity: usize,
@@ -406,8 +411,8 @@ pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw
     // _vec dropped and memory freed
 }
 
-impl From<MempoolTx> for RawMempoolTx {
-    fn from(mem_tx: MempoolTx) -> Self {
+impl From<&MempoolTx> for RawMempoolTx {
+    fn from(mem_tx: &MempoolTx) -> Self {
         let senders: Vec<u16> = mem_tx.senders.keys().map(|peer_id| peer_id.0).collect();
         let senders_len = senders.len();
         let senders_capacity = senders.capacity();
@@ -423,13 +428,24 @@ impl From<MempoolTx> for RawMempoolTx {
     }
 }
 
+impl RawMempoolTx {
+    /// Constructs the null representation
+    fn null() -> RawMempoolTx {
+        RawMempoolTx {
+            height: 0,
+            gas_wanted: 0,
+            tx: RawTx { tx: std::ptr::null(), len: 0 },
+            senders: std::ptr::null(),
+            senders_len: 0,
+            senders_capacity: 00,
+        }
+    }
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_raw_mempool_tx_free(
-    _mempool_handle: Handle,
-    raw_mem_tx: RawMempoolTx,
-) {
+pub unsafe extern "C" fn clist_mempool_raw_mempool_tx_free(raw_mem_tx: RawMempoolTx) {
     let _vec = Vec::from_raw_parts(
-        raw_mem_tx.senders,
+        raw_mem_tx.senders.cast_mut(),
         raw_mem_tx.senders_len,
         raw_mem_tx.senders_capacity,
     );
@@ -438,6 +454,19 @@ pub unsafe extern "C" fn clist_mempool_raw_mempool_tx_free(
     // It gets cleaned up in an `update()`
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_txs_front(_mempool_handle: Handle) -> RawMempoolTx {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    match mempool.front() {
+        Some(mem_tx) => mem_tx.into(),
+        None => RawMempoolTx::null(),
+    }
+}
 /// Returned memory must not be stored in go.
 /// In go, use of `C.GoBytes()` is recommended.
 /// Does not remove the transactions from the mempool.
