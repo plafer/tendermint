@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -627,13 +628,13 @@ func rsMemProxyAppConnError() C.bool {
 func rsMemProxyAppConnCheckTxAsync(rawTx C.RawTx, setCallback C.bool) {
 	// Note: `C.GoBytes` makes a copy of the data, and the new memory is managed by Go
 	// (i.e. garbage collected)
-	tx := C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len))
+	tx := types.Tx(C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len)))
 	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
 
 	if setCallback {
 		// TODO: remove this check
 		if !reflect.DeepEqual(tx, gMem.checkTxTx) {
-			panic("tx not properly converted")
+			panic(fmt.Sprintf("tx not properly converted. \ntx: %v.\ncheckTxTx: %v", tx, gMem.checkTxTx))
 		}
 
 		reqRes.SetCallback(gMem.reqResCb(
