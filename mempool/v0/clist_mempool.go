@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	abci "github.com/tendermint/tendermint/abci/types"
@@ -205,18 +204,7 @@ func (mem *CListMempool) Flush() {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
-	_ = atomic.SwapInt64(&mem.txsBytes, 0)
-	mem.cache.Reset()
-
-	for e := mem.txs.Front(); e != nil; e = e.Next() {
-		mem.txs.Remove(e)
-		e.DetachPrev()
-	}
-
-	mem.txsMap.Range(func(key, _ interface{}) bool {
-		mem.txsMap.Delete(key)
-		return true
-	})
+	C.clist_mempool_flush(mem.handle)
 }
 
 // TxsFront returns the first transaction in the ordered list for peer

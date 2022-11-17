@@ -148,6 +148,13 @@ impl CListMempool {
         }
     }
 
+    /// (from go) XXX: Unsafe! Calling Flush may leave mempool in inconsistent state.
+    /// Only used in tests
+    fn flush(&mut self) {
+        self.tx_bytes = 0;
+        self.txs.clear();
+    }
+
     /// impl of resCbFirstTime after the postCheck function is called in go
     fn res_cb_first_time(
         &mut self,
@@ -453,6 +460,17 @@ pub unsafe extern "C" fn clist_mempool_update(
 
     let raw_txs: Vec<&[u8]> = raw_txs.into();
     mempool.update(height, raw_txs.as_slice());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_flush(_mempool_handle: Handle) {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    mempool.flush();
 }
 
 #[no_mangle]
