@@ -43,7 +43,6 @@
     + In order to be confident that we never violate Rust's memory model, mutex logic should be cleaned up in go
         + e.g. [this](https://github.com/tendermint/tendermint/blob/99a7ac84dca30676fd544be18c6df2880a14429f/mempool/v0/clist_mempool.go#L578) or [this issue](https://github.com/tendermint/tendermint/issues/9525)
 
-
 # Known shortcomings
 Most mempool tests that I didn't write fail because a few things need to be implemented still:
 + Currently no cache implemented, and some tests expect that

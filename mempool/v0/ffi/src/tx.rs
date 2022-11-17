@@ -16,6 +16,7 @@ pub struct MempoolTx {
     pub height: i64,
     pub gas_wanted: i64,
     pub tx: Vec<u8>,
+    /// TODO: Make this a `HashSet`; the `bool` is redundant
     pub senders: HashMap<PeerId, bool>,
 }
 

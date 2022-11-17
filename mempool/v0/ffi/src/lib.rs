@@ -385,11 +385,57 @@ pub struct RustRawTxs {
     capacity: usize,
 }
 
+/// Raw representation of a `MempoolTx`.
+#[repr(C)]
+pub struct RawMempoolTx {
+    pub height: i64,
+    pub gas_wanted: i64,
+    /// Owned by Rust. This should be thought of as a view in the mempool.
+    pub tx: RawTx,
+    // Owned by Go; should be freed on a call to free() this struct
+    pub senders: *mut u16,
+    pub senders_len: usize,
+    /// Necessary to be able to appropriately cleanup `RawMempoolTx`
+    pub senders_capacity: usize,
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw_txs: RustRawTxs) {
     let _vec = Vec::from_raw_parts(raw_txs.txs.cast_mut(), raw_txs.len, raw_txs.capacity);
 
     // _vec dropped and memory freed
+}
+
+impl From<MempoolTx> for RawMempoolTx {
+    fn from(mem_tx: MempoolTx) -> Self {
+        let senders: Vec<u16> = mem_tx.senders.keys().map(|peer_id| peer_id.0).collect();
+        let senders_len = senders.len();
+        let senders_capacity = senders.capacity();
+
+        Self {
+            height: mem_tx.height,
+            gas_wanted: mem_tx.gas_wanted,
+            tx: mem_tx.tx.as_slice().into(),
+            senders: senders.leak().as_mut_ptr(),
+            senders_len,
+            senders_capacity,
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_raw_mempool_tx_free(
+    _mempool_handle: Handle,
+    raw_mem_tx: RawMempoolTx,
+) {
+    let _vec = Vec::from_raw_parts(
+        raw_mem_tx.senders,
+        raw_mem_tx.senders_len,
+        raw_mem_tx.senders_capacity,
+    );
+
+    // Note: we don't free `raw_mem_tx` as it still exists in the mempool.
+    // It gets cleaned up in an `update()`
 }
 
 /// Returned memory must not be stored in go.
