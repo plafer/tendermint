@@ -212,8 +212,12 @@ func (mem *CListMempool) Flush() {
 // FIXME: leaking implementation details!
 //
 // Safe for concurrent use by multiple goroutines.
-func (mem *CListMempool) TxsFront() *clist.CElement {
-	return mem.txs.Front()
+func (mem *CListMempool) TxsFront() *v0tx.MempoolTx {
+	rawMempoolTx := C.clist_mempool_txs_front(mem.handle)
+	defer C.clist_mempool_raw_mempool_tx_free(rawMempoolTx)
+
+	// FIXME: return proper value
+	return nil
 }
 
 // TxsWaitChan returns a channel to wait on transactions. It will be closed
@@ -253,6 +257,7 @@ func (mem *CListMempool) CheckTx(
 		tx:  (*C.uchar)(C.CBytes(tx)),
 		len: (C.ulong)(len(tx)),
 	}
+	defer C.free(unsafe.Pointer(raw_tx.tx))
 
 	var err error = nil
 
@@ -265,8 +270,6 @@ func (mem *CListMempool) CheckTx(
 			MaxTxsBytes: 0,
 		}
 	}
-
-	C.free(unsafe.Pointer(raw_tx.tx))
 
 	mem.checkTxTx = nil
 	mem.checkTxCb = nil
@@ -345,8 +348,9 @@ func (mem *CListMempool) AddTx(memTx *v0tx.MempoolTx) {
 	// in Go to C, as long as C doesn't store them. But I'm not sure about the
 	// type differences between `[]byte` and `uint8_t *`
 	var c_tx = C.CBytes(memTx.Tx)
+	defer C.free(c_tx)
+
 	C.clist_mempool_add_tx(mem.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
-	C.free(c_tx)
 
 	// metrics still tracked in go
 	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.Tx)))
@@ -362,8 +366,9 @@ func (mem *CListMempool) RemoveTx(tx types.Tx, elem *clist.CElement, removeFromC
 	defer mem.addRemoveMtx.Unlock()
 
 	var c_tx = C.CBytes(tx)
+	defer C.free(c_tx)
+
 	C.clist_mempool_remove_tx(mem.handle, (*C.uchar)(c_tx), C.ulong(len(tx)), C.bool(removeFromCache))
-	C.free(c_tx)
 }
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.
@@ -415,6 +420,7 @@ func (mem *CListMempool) resCbFirstTime(
 			tx:  (*C.uchar)(C.CBytes(tx)),
 			len: (C.ulong)(len(tx)),
 		}
+		defer C.free(unsafe.Pointer(raw_tx.tx))
 
 		C.clist_mempool_res_cb_first_time(
 			mem.handle, 
@@ -424,8 +430,6 @@ func (mem *CListMempool) resCbFirstTime(
 			C.longlong(r.CheckTx.GasWanted), 
 			C.ushort(peerID),
 		)
-
-		C.free(unsafe.Pointer(raw_tx.tx))
 
 	default:
 		// ignore other messages
@@ -484,6 +488,8 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	defer mem.updateMtx.RUnlock()
 
 	rust_raw_txs := C.clist_mempool_reap_max_bytes_max_gas(mem.handle, C.longlong(maxBytes), C.longlong(maxGas))
+	defer C.clist_mempool_raw_txs_free(mem.handle, rust_raw_txs)
+
 	rust_raw_txs_slice := unsafe.Slice(rust_raw_txs.txs, rust_raw_txs.len)
 
 	txs := make([]types.Tx, len(rust_raw_txs_slice))
@@ -491,8 +497,6 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		// allocate new memory since `raw_txs` is owned by Rust
 		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].tx), C.int(rust_raw_txs_slice[i].len))
 	}
-
-	C.clist_mempool_raw_txs_free(mem.handle, rust_raw_txs)
 
 	return txs
 }
@@ -537,6 +541,12 @@ func (mem *CListMempool) Update(
 			len: (C.ulong)(len(txs[i])),
 		}
 	}
+	defer func() {
+		// cleanup `CBytes` allocations
+		for _, raw_tx := range raw_txs_slice {
+			C.free(unsafe.Pointer(raw_tx.tx))
+		}
+	}()
 
 	var raw_txs = C.struct_RawTxs{
 		// cgo quote:
@@ -554,11 +564,6 @@ func (mem *CListMempool) Update(
 	}
 
 	C.clist_mempool_update(mem.handle, C.longlong(height), raw_txs)
-
-	// cleanup `CBytes` allocations
-	for _, raw_tx := range raw_txs_slice {
-		C.free(unsafe.Pointer(raw_tx.tx))
-	}
 
 	mem.metrics.Size.Set(float64(mem.Size()))
 
