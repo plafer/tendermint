@@ -59,6 +59,7 @@ type CListMempool struct {
 	sizeMtx      tmsync.RWMutex
 	addRemoveMtx tmsync.Mutex
 	reqResCbMtx  tmsync.Mutex
+	txsFrontMtx  tmsync.Mutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
@@ -207,17 +208,35 @@ func (mem *CListMempool) Flush() {
 	C.clist_mempool_flush(mem.handle)
 }
 
-// TxsFront returns the first transaction in the ordered list for peer
-// goroutines to call .NextWait() on.
-// FIXME: leaking implementation details!
+// TxsFront returns the first transaction in the ordered list
 //
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) TxsFront() *v0tx.MempoolTx {
-	rawMempoolTx := C.clist_mempool_txs_front(mem.handle)
+	mem.txsFrontMtx.Lock()
+	defer mem.txsFrontMtx.Unlock()
+
+	rawMempoolTx := C.clist_mempool_tx_front(mem.handle)
 	defer C.clist_mempool_raw_mempool_tx_free(rawMempoolTx)
 
-	// FIXME: return proper value
-	return nil
+	var memTx *v0tx.MempoolTx = nil
+	if rawMempoolTx.raw_tx.tx != nil {
+		// `rawMempoolTx` is not null, so we can convert it to `MempoolTx`
+		// TODO: pull this out in a function
+		var senders_slice []C.ushort = unsafe.Slice(rawMempoolTx.senders, rawMempoolTx.senders_len)
+		senders := sync.Map{}
+		for sender := range senders_slice {
+			senders.Store(sender, true)
+		}
+
+		memTx = &v0tx.MempoolTx{
+			Height:    int64(rawMempoolTx.height),
+			GasWanted: int64(rawMempoolTx.gas_wanted),
+			Tx:        types.Tx(C.GoBytes(unsafe.Pointer(rawMempoolTx.raw_tx.tx), C.int(rawMempoolTx.raw_tx.len))),
+			Senders:   senders,
+		}
+	}
+
+	return memTx
 }
 
 // TxsWaitChan returns a channel to wait on transactions. It will be closed
@@ -423,11 +442,11 @@ func (mem *CListMempool) resCbFirstTime(
 		defer C.free(unsafe.Pointer(raw_tx.tx))
 
 		C.clist_mempool_res_cb_first_time(
-			mem.handle, 
+			mem.handle,
 			C.uint(r.CheckTx.Code),
 			C.bool(hasPostCheckError),
 			raw_tx,
-			C.longlong(r.CheckTx.GasWanted), 
+			C.longlong(r.CheckTx.GasWanted),
 			C.ushort(peerID),
 		)
 

@@ -128,7 +128,7 @@ func TestReapMaxBytesMaxGas(t *testing.T) {
 
 	// Ensure gas calculation behaves as expected
 	checkTxs(t, mp, 1, mempool.UnknownPeerID)
-	tx0 := mp.TxsFront().Value.(*tx.MempoolTx)
+	tx0 := mp.TxsFront()
 	// assert that kv store has gas wanted = 1.
 	require.Equal(t, app.CheckTx(abci.RequestCheckTx{Tx: tx0.Tx}).GasWanted, int64(1), "KVStore had a gas value neq to 1")
 	require.Equal(t, tx0.GasWanted, int64(1), "transactions gas was set incorrectly")

@@ -396,8 +396,8 @@ pub struct RawMempoolTx {
     pub height: i64,
     pub gas_wanted: i64,
     /// Owned by Rust. This should be thought of as a view in the mempool.
-    pub tx: RawTx,
-    // Owned by Go; should be freed on a call to free() this struct
+    pub raw_tx: RawTx,
+    // Owned by Go; should be freed by calling `clist_mempool_raw_mempool_free()`
     pub senders: *const u16,
     pub senders_len: usize,
     /// Necessary to be able to appropriately cleanup `RawMempoolTx`
@@ -420,7 +420,7 @@ impl From<&MempoolTx> for RawMempoolTx {
         Self {
             height: mem_tx.height,
             gas_wanted: mem_tx.gas_wanted,
-            tx: mem_tx.tx.as_slice().into(),
+            raw_tx: mem_tx.tx.as_slice().into(),
             senders: senders.leak().as_mut_ptr(),
             senders_len,
             senders_capacity,
@@ -434,7 +434,7 @@ impl RawMempoolTx {
         RawMempoolTx {
             height: 0,
             gas_wanted: 0,
-            tx: RawTx { tx: std::ptr::null(), len: 0 },
+            raw_tx: RawTx { tx: std::ptr::null(), len: 0 },
             senders: std::ptr::null(),
             senders_len: 0,
             senders_capacity: 00,
@@ -455,7 +455,7 @@ pub unsafe extern "C" fn clist_mempool_raw_mempool_tx_free(raw_mem_tx: RawMempoo
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_txs_front(_mempool_handle: Handle) -> RawMempoolTx {
+pub unsafe extern "C" fn clist_mempool_tx_front(_mempool_handle: Handle) -> RawMempoolTx {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
     } else {
