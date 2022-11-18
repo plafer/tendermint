@@ -37,6 +37,14 @@ extern "C" {
 
     /// calls `mem.proxyAppConn.FlushAsync()` function in go
     fn rsMemProxyAppConnFlushAsync();
+
+    /// closes the transaction wait channel, which unblocks any goroutine
+    /// that was waiting for new transactions
+    fn rsCloseTxsWaitChan();
+
+    /// opens the transaction wait channel, which blocks any goroutine that
+    /// needs txs from the mempool
+    fn rsMakeTxsWaitChan();
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
@@ -71,6 +79,12 @@ impl CListMempool {
     fn add_tx(&mut self, mem_tx: MempoolTx) {
         self.tx_bytes += mem_tx.tx.len() as i64;
         self.txs.insert(hash_tx(&mem_tx.tx), mem_tx);
+
+        if self.txs.len() == 1 {
+            // if we just added the first item, unblock any "customer goroutines"
+            // that may be waiting
+            unsafe { rsCloseTxsWaitChan() };
+        }
     }
 
     fn remove_tx(&mut self, tx: &[u8]) {
@@ -78,6 +92,11 @@ impl CListMempool {
 
         self.txs.remove(&tx_hash);
         self.tx_bytes -= tx.len() as i64;
+
+        if self.txs.is_empty() {
+            // if we removed the last item, make "customer goroutines" wait
+            unsafe { rsMakeTxsWaitChan() };
+        }
     }
 
     fn size(&self) -> usize {
