@@ -60,6 +60,7 @@ type CListMempool struct {
 	addRemoveMtx tmsync.Mutex
 	reqResCbMtx  tmsync.Mutex
 	txsFrontMtx  tmsync.Mutex
+	waitChanMtx  tmsync.RWMutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
@@ -245,6 +246,9 @@ func (mem *CListMempool) TxsFront() *v0tx.MempoolTx {
 //
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) TxsWaitChan() <-chan struct{} {
+	mem.waitChanMtx.Lock()
+	defer mem.waitChanMtx.Unlock()
+
 	return mem.txs.WaitChan()
 }
 
