@@ -37,6 +37,7 @@ var gMem *CListMempool = nil
 // CheckTx abci message before the transaction is added to the pool. The
 // mempool uses a concurrent list structure for storing transactions that can
 // be efficiently accessed by multiple concurrent readers.
+// TODO: cleanup unused fields
 type CListMempool struct {
 	// Atomic integers
 	height   int64 // the last block Update()'d to
@@ -55,15 +56,16 @@ type CListMempool struct {
 	postCheck mempool.PostCheckFunc
 
 	// Mutex to protect `Size()` and `SizeBytes()`
-	// FIXME: find a better solution (e.g. atomics in Rust?)
 	sizeMtx      tmsync.RWMutex
 	addRemoveMtx tmsync.Mutex
 	reqResCbMtx  tmsync.Mutex
 	txsFrontMtx  tmsync.Mutex
-	waitChanMtx  tmsync.RWMutex
+	txsWaitChanMtx  tmsync.RWMutex
 
 	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
+
+	txsWaitChan chan struct{}
 
 	// Track whether we're rechecking txs.
 	// These are not protected by a mutex and are expected to be mutated in
@@ -121,6 +123,7 @@ func NewCListMempool(
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
+		txsWaitChan:   make(chan struct{}),
 		handle:        (C.struct_Handle)(C.clist_mempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
 	}
 
@@ -246,10 +249,10 @@ func (mem *CListMempool) TxsFront() *v0tx.MempoolTx {
 //
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) TxsWaitChan() <-chan struct{} {
-	mem.waitChanMtx.Lock()
-	defer mem.waitChanMtx.Unlock()
+	mem.txsWaitChanMtx.Lock()
+	defer mem.txsWaitChanMtx.Unlock()
 
-	return mem.txs.WaitChan()
+	return mem.txsWaitChan
 }
 
 // It blocks if we're waiting on Update() or Reap().
@@ -664,4 +667,14 @@ func rsMemProxyAppConnCheckTxAsync(rawTx C.RawTx, setCallback C.bool) {
 //export rsMemProxyAppConnFlushAsync
 func rsMemProxyAppConnFlushAsync() {
 	gMem.proxyAppConn.FlushAsync()
+}
+
+//export rsCloseTxsWaitChan
+func rsCloseTxsWaitChan() {
+	close(gMem.txsWaitChan)
+}
+
+//export rsMakeTxsWaitChan
+func rsMakeTxsWaitChan() {
+	gMem.txsWaitChan = make(chan struct{})
 }
