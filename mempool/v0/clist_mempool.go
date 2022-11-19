@@ -56,7 +56,6 @@ type CListMempool struct {
 	txsFrontMtx  tmsync.Mutex
 	txsWaitChanMtx  tmsync.RWMutex
 
-	txs          *clist.CList // concurrent linked-list of good txs
 	proxyAppConn proxy.AppConnMempool
 
 	txsWaitChan chan struct{}
@@ -111,7 +110,6 @@ func NewCListMempool(
 	mp := &CListMempool{
 		config:        cfg,
 		proxyAppConn:  proxyAppConn,
-		txs:           clist.New(),
 		recheckCursor: nil,
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
