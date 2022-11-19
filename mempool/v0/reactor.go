@@ -250,6 +250,23 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 				continue
 			}
 		}
+
+		/// FIXME: I broke this routine. The previous logic would traverse the whole mempool.
+		/// The current one keeps reading the first tx in the mempool.
+		/// We should return a copy of the mempool from Rust, and traverse it here. It would
+		/// be slightly different from the canonical go implementation though, which is view in the
+		/// mempool which could get mutated as we're traversing.
+
+		// PREVIOUS CODE:
+		// select {
+		// case <-next.NextWaitChan():
+		// 	// see the start of the for loop for nil check
+		// 	next = next.Next()
+		// case <-peer.Quit():
+		// 	return
+		// case <-memR.Quit():
+		// 	return
+		// }
 	}
 }
 

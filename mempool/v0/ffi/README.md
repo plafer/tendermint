@@ -48,3 +48,4 @@ Most mempool tests that I didn't write fail because a few things need to be impl
 + Currently no cache implemented, and some tests expect that
 + We don't report proper errors across the ffi boundary (just `true`/`false`); some tests have logic based on which error happened
 + our `isFull()` implementation doesn't check the proper size in bytes. See comments in the code.
++ The mempool reactor's `broadcastTxRoutine` is currently broken; see `FIXME` comment in there.
