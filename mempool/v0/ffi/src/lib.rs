@@ -143,7 +143,7 @@ impl CListMempool {
 
     fn update(&mut self, height: i64, raw_txs: &[&[u8]]) {
         self.height = height;
-        self.notified_txs_available = true;
+        self.notified_txs_available = false;
 
         for raw_tx in raw_txs {
             // Note: our implementation currently has no cache
