@@ -789,7 +789,7 @@ func TestReapMaxBytesMaxGasSimple(t *testing.T) {
 			}
 
 			memTx := tx.MempoolTx{
-				Height:    mp.height,
+				Height:    0, // the height at which it was initialized (and no call to `update()` which changes height)
 				GasWanted: 1,
 				Tx:        txBytes,
 				Senders:   sync.Map{},

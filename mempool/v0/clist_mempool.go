@@ -39,12 +39,7 @@ var gMem *CListMempool = nil
 // be efficiently accessed by multiple concurrent readers.
 // TODO: cleanup unused fields
 type CListMempool struct {
-	// Atomic integers
-	height   int64 // the last block Update()'d to
-	txsBytes int64 // total size of mempool, in bytes
-
 	// notify listeners (ie. consensus) when txs are available
-	notifiedTxsAvailable bool
 	txsAvailable         chan struct{} // fires once for each height, when the mempool is not empty
 
 	config *config.MempoolConfig
@@ -118,7 +113,6 @@ func NewCListMempool(
 		config:        cfg,
 		proxyAppConn:  proxyAppConn,
 		txs:           clist.New(),
-		height:        height,
 		recheckCursor: nil,
 		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
