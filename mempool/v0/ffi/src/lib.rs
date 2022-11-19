@@ -75,7 +75,7 @@ pub struct CListMempool {
     /// Implements both go's `tx` and `txsMap`
     txs: LinkedHashMap<TxKeyHash, MempoolTx>,
     /// size of the sum of all txs the mempool, in bytes
-    tx_bytes: i64,
+    txs_bytes: i64,
     notified_txs_available: bool,
 
     /// List of transactions left to recheck after an `update()`.
@@ -85,7 +85,7 @@ pub struct CListMempool {
 
 impl CListMempool {
     fn add_tx(&mut self, mem_tx: MempoolTx) {
-        self.tx_bytes += mem_tx.tx.len() as i64;
+        self.txs_bytes += mem_tx.tx.len() as i64;
         self.txs.insert(hash_tx(&mem_tx.tx), mem_tx);
 
         if self.txs.len() == 1 {
@@ -99,7 +99,7 @@ impl CListMempool {
         let tx_hash = hash_tx(tx);
 
         self.txs.remove(&tx_hash);
-        self.tx_bytes -= tx.len() as i64;
+        self.txs_bytes -= tx.len() as i64;
 
         if self.txs.is_empty() {
             // if we removed the last item, make "customer goroutines" wait
@@ -113,7 +113,7 @@ impl CListMempool {
 
     fn is_full(&self, tx_size: i64) -> bool {
         let mem_size = self.txs.len() as i64;
-        let mem_tx_bytes = self.tx_bytes;
+        let mem_tx_bytes = self.txs_bytes;
 
         mem_size >= self.config.size || (mem_tx_bytes + tx_size) > self.config.max_txs_bytes
     }
@@ -225,8 +225,10 @@ impl CListMempool {
     /// (from go) XXX: Unsafe! Calling Flush may leave mempool in inconsistent state.
     /// Only used in tests
     fn flush(&mut self) {
-        self.tx_bytes = 0;
+        self.txs_bytes = 0;
         self.txs.clear();
+        
+        unsafe { rsMakeTxsWaitChan() };
     }
 
     /// impl of resCbFirstTime after the postCheck function is called in go
@@ -332,7 +334,7 @@ pub unsafe extern "C" fn clist_mempool_new(
         },
         height,
         txs: LinkedHashMap::new(),
-        tx_bytes: 0,
+        txs_bytes: 0,
         notified_txs_available: false,
         recheck_txs: Vec::new(),
     });
@@ -356,7 +358,7 @@ pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_size_bytes(_mempool_handle: Handle) -> i64 {
     if let Some(ref mempool) = MEMPOOL {
-        mempool.tx_bytes
+        mempool.txs_bytes
     } else {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
