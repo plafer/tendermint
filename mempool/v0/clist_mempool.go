@@ -17,7 +17,6 @@ import (
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
-	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/mempool"
 	v0tx "github.com/tendermint/tendermint/mempool/v0/tx"
@@ -512,15 +511,17 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
-	if max < 0 {
-		max = mem.txs.Len()
+	rust_raw_txs := C.clist_mempool_reap_max_txs(mem.handle, C.int(max))
+	defer C.clist_mempool_raw_txs_free(mem.handle, rust_raw_txs)
+
+	rust_raw_txs_slice := unsafe.Slice(rust_raw_txs.txs, rust_raw_txs.len)
+
+	txs := make([]types.Tx, len(rust_raw_txs_slice))
+	for i := 0; i < len(txs); i++ {
+		// allocate new memory since `raw_txs` is owned by Rust
+		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].tx), C.int(rust_raw_txs_slice[i].len))
 	}
 
-	txs := make([]types.Tx, 0, tmmath.MinInt(mem.txs.Len(), max))
-	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
-		memTx := e.Value.(*v0tx.MempoolTx)
-		txs = append(txs, memTx.Tx)
-	}
 	return txs
 }
 
