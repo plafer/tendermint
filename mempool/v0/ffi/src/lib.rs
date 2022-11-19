@@ -15,6 +15,11 @@ use tx::{hash_tx, MempoolTx, PeerId, TxKeyHash};
 const ABCI_CODE_TYPE_OK: u32 = 0;
 
 extern "C" {
+    /// Tests whether the `txsAvailable` feature is enabled
+    fn rsTxsAvailableEnabled() -> bool;
+
+    /// Writes to the `txsAvailable` channel to notify
+    /// any goroutine waiting on new transactions
     fn rsNotifyTxsAvailable();
 
     /// calls `mem.preCheck()` function in go.
@@ -167,7 +172,7 @@ impl CListMempool {
                 }
                 unsafe { rsMemProxyAppConnFlushAsync() };
             } else {
-                unsafe { rsNotifyTxsAvailable() };
+                self.notify_txs_available();
             }
         }
     }
@@ -209,7 +214,7 @@ impl CListMempool {
         };
 
         self.add_tx(mem_tx);
-        unsafe { rsNotifyTxsAvailable() };
+        self.notify_txs_available();
     }
 
     fn res_cb_recheck(&mut self, check_tx_code: u32, raw_tx: &[u8]) {
@@ -232,6 +237,18 @@ impl CListMempool {
         }
 
         if self.size() > 0 {
+            self.notify_txs_available();
+        }
+    }
+
+    fn notify_txs_available(&mut self) {
+        if self.size() == 0 {
+            // Note: We're not supposed to panic across FFI boundary.
+            panic!("notified txs available but mempool is empty!")
+        }
+
+        if unsafe { rsTxsAvailableEnabled() } && self.notified_txs_available == false {
+            self.notified_txs_available = true;
             unsafe { rsNotifyTxsAvailable() };
         }
     }
@@ -453,7 +470,10 @@ impl RawMempoolTx {
         RawMempoolTx {
             height: 0,
             gas_wanted: 0,
-            raw_tx: RawTx { tx: std::ptr::null(), len: 0 },
+            raw_tx: RawTx {
+                tx: std::ptr::null(),
+                len: 0,
+            },
             senders: std::ptr::null(),
             senders_len: 0,
             senders_capacity: 00,

@@ -494,20 +494,6 @@ func (mem *CListMempool) TxsAvailable() <-chan struct{} {
 	return mem.txsAvailable
 }
 
-func (mem *CListMempool) notifyTxsAvailable() {
-	if mem.Size() == 0 {
-		panic("notified txs available but mempool is empty!")
-	}
-	if mem.txsAvailable != nil && !mem.notifiedTxsAvailable {
-		// channel cap is 1, so this will send once
-		mem.notifiedTxsAvailable = true
-		select {
-		case mem.txsAvailable <- struct{}{}:
-		default:
-		}
-	}
-}
-
 // Safe for concurrent use by multiple goroutines.
 func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	mem.updateMtx.RLock()
@@ -605,9 +591,17 @@ func (mem *CListMempool) Free() {
 	gMem = nil
 }
 
+//export rsTxsAvailableEnabled
+func rsTxsAvailableEnabled() C.bool {
+	return gMem.txsAvailable != nil
+}
+
 //export rsNotifyTxsAvailable
 func rsNotifyTxsAvailable() {
-	gMem.notifyTxsAvailable()
+	select {
+		case gMem.txsAvailable <- struct{}{}:
+		default:
+	}
 }
 
 //export rsMemPreCheck
