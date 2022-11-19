@@ -204,12 +204,12 @@ impl CListMempool {
         txs_to_return
     }
 
-    fn reap_max_txs(&self, max: i32) -> Vec<&MempoolTx> {
-        let num_txs_to_return = if max < 0 {
+    fn reap_max_txs(&self, max_txs: i32) -> Vec<&MempoolTx> {
+        let num_txs_to_return = if max_txs < 0 {
             self.size()
         } else {
             // guaranteed not to panic, since we made sure `max >= 0`
-            max.try_into().unwrap()
+            max_txs.try_into().unwrap()
         };
 
         self.txs
@@ -567,6 +567,31 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
 
     let txs_to_return: Vec<RawTx> = mempool
         .reap_max_bytes_max_gas(max_bytes, max_gas)
+        .into_iter()
+        .map(|mem_tx| mem_tx.tx.as_slice().into())
+        .collect();
+    let num_txs_to_return = txs_to_return.len();
+    let capacity = txs_to_return.capacity();
+
+    RustRawTxs {
+        txs: txs_to_return.leak().as_ptr(),
+        len: num_txs_to_return,
+        capacity,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_reap_max_txs(
+    _mempool_handle: Handle,
+    max_txs: i32,
+) -> RustRawTxs {
+    let mempool = if let Some(ref mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+    let txs_to_return: Vec<RawTx> = mempool
+        .reap_max_txs(max_txs)
         .into_iter()
         .map(|mem_tx| mem_tx.tx.as_slice().into())
         .collect();
