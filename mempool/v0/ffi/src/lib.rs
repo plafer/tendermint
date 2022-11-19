@@ -204,6 +204,21 @@ impl CListMempool {
         txs_to_return
     }
 
+    fn reap_max_txs(&self, max: i32) -> Vec<&MempoolTx> {
+        let num_txs_to_return = if max < 0 {
+            self.size()
+        } else {
+            // guaranteed not to panic, since we made sure `max >= 0`
+            max.try_into().unwrap()
+        };
+
+        self.txs
+            .iter()
+            .take(num_txs_to_return)
+            .map(|(_, mem_tx)| mem_tx)
+            .collect()
+    }
+
     /// (from go) XXX: Unsafe! Calling Flush may leave mempool in inconsistent state.
     /// Only used in tests
     fn flush(&mut self) {
@@ -557,7 +572,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
         .collect();
     let num_txs_to_return = txs_to_return.len();
     let capacity = txs_to_return.capacity();
-    
+
     RustRawTxs {
         txs: txs_to_return.leak().as_ptr(),
         len: num_txs_to_return,
