@@ -177,6 +177,33 @@ impl CListMempool {
         }
     }
 
+    fn reap_max_bytes_max_gas(&self, max_bytes: i64, max_gas: i64) -> Vec<&MempoolTx> {
+        let mut txs_to_return: Vec<&MempoolTx> = Vec::new();
+
+        let mut running_size = 0;
+        let mut running_gas = 0;
+        for (_tx_hash, mem_tx) in self.txs.iter() {
+            // FIXME: this is incorrect. We need to look at the size of all the
+            // current txs once marshalled to protobuf format
+            let temptative_size = running_size + mem_tx.tx.len() as i64;
+            if max_bytes > -1 && temptative_size > max_bytes {
+                break;
+            }
+
+            let temptative_gas = running_gas + mem_tx.gas_wanted;
+            if max_gas > -1 && temptative_gas > max_gas {
+                break;
+            }
+
+            // success: we can add the current tx to the current output
+            txs_to_return.push(mem_tx);
+            running_size = temptative_size;
+            running_gas = temptative_gas;
+        }
+
+        txs_to_return
+    }
+
     /// (from go) XXX: Unsafe! Calling Flush may leave mempool in inconsistent state.
     /// Only used in tests
     fn flush(&mut self) {
@@ -517,46 +544,24 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     max_bytes: i64,
     max_gas: i64,
 ) -> RustRawTxs {
-    if let Some(ref mempool) = MEMPOOL {
-        let mut txs_to_return: Vec<&MempoolTx> = Vec::new();
-
-        let mut running_size = 0;
-        let mut running_gas = 0;
-        for (_tx_hash, mem_tx) in mempool.txs.iter() {
-            // FIXME: this is incorrect. We need to look at the size of all the
-            // current txs once marshalled to protobuf format
-            let temptative_size = running_size + mem_tx.tx.len() as i64;
-            if max_bytes > -1 && temptative_size > max_bytes {
-                break;
-            }
-
-            let temptative_gas = running_gas + mem_tx.gas_wanted;
-            if max_gas > -1 && temptative_gas > max_gas {
-                break;
-            }
-
-            // success: we can add the current tx to the current output
-            txs_to_return.push(mem_tx);
-            running_size = temptative_size;
-            running_gas = temptative_gas;
-        }
-
-        {
-            let txs_to_return: Vec<RawTx> = txs_to_return
-                .into_iter()
-                .map(|mem_tx| mem_tx.tx.as_slice().into())
-                .collect();
-
-            let num_txs_to_return = txs_to_return.len();
-            let capacity = txs_to_return.capacity();
-            RustRawTxs {
-                txs: txs_to_return.leak().as_ptr(),
-                len: num_txs_to_return,
-                capacity,
-            }
-        }
+    let mempool = if let Some(ref mempool) = MEMPOOL {
+        mempool
     } else {
         panic!("Mempool not initialized!");
+    };
+
+    let txs_to_return: Vec<RawTx> = mempool
+        .reap_max_bytes_max_gas(max_bytes, max_gas)
+        .into_iter()
+        .map(|mem_tx| mem_tx.tx.as_slice().into())
+        .collect();
+    let num_txs_to_return = txs_to_return.len();
+    let capacity = txs_to_return.capacity();
+    
+    RustRawTxs {
+        txs: txs_to_return.leak().as_ptr(),
+        len: num_txs_to_return,
+        capacity,
     }
 }
 
