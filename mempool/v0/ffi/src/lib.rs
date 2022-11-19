@@ -60,6 +60,9 @@ pub struct MempoolConfig {
     // Limit the total size of all txs in the mempool.
     // This only accounts for raw transactions (e.g. given 1MB transactions and
     // max_txs_bytes=5MB, mempool will only accept 5 transactions).
+    max_txs_bytes: i64,
+    ///	Maximum size of a single transaction
+	/// NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
     max_tx_bytes: i64,
     /// Maximum number of txs in the mempool
     size: i64,
@@ -112,7 +115,7 @@ impl CListMempool {
         let mem_size = self.txs.len() as i64;
         let mem_tx_bytes = self.tx_bytes;
 
-        mem_size >= self.config.size || (mem_tx_bytes + tx_size) > self.config.max_tx_bytes
+        mem_size >= self.config.size || (mem_tx_bytes + tx_size) > self.config.max_txs_bytes
     }
 
     /// Returns the first tx in the mempool, or `None` if the mempool is empty
@@ -308,6 +311,7 @@ pub struct Handle {
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_new(
     max_tx_bytes: i64,
+    max_txs_bytes: i64,
     size: i64,
     _keep_invalid_txs_in_cache: bool,
     recheck: bool,
@@ -322,6 +326,7 @@ pub unsafe extern "C" fn clist_mempool_new(
     MEMPOOL = Some(CListMempool {
         config: MempoolConfig {
             max_tx_bytes,
+            max_txs_bytes,
             size,
             recheck,
         },

@@ -115,7 +115,15 @@ func NewCListMempool(
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
 		txsWaitChan:   make(chan struct{}),
-		handle:        (C.struct_Handle)(C.clist_mempool_new(C.longlong(cfg.MaxTxBytes), C.longlong(cfg.Size), C.bool(cfg.KeepInvalidTxsInCache), C.bool(cfg.Recheck), C.longlong(height))),
+		handle:        (C.struct_Handle)(
+			C.clist_mempool_new(
+				C.longlong(cfg.MaxTxBytes), 
+				C.longlong(cfg.MaxTxsBytes), 
+				C.longlong(cfg.Size), 
+				C.bool(cfg.KeepInvalidTxsInCache), 
+				C.bool(cfg.Recheck), 
+				C.longlong(height),
+				)),
 	}
 
 	if cfg.CacheSize > 0 {
