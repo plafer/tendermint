@@ -66,10 +66,6 @@ type CListMempool struct {
 	recheckCursor *clist.CElement // next expected response
 	recheckEnd    *clist.CElement // re-checking stops here
 
-	// Map for quick access to txs to record sender in CheckTx.
-	// txsMap: txKey -> CElement
-	txsMap sync.Map
-
 	// Keep a cache of already-seen txs.
 	// This reduces the pressure on the proxyApp.
 	cache mempool.TxCache
@@ -398,15 +394,20 @@ func (mem *CListMempool) RemoveTx(tx types.Tx, elem *clist.CElement, removeFromC
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.
 func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
-	if e, ok := mem.txsMap.Load(txKey); ok {
-		memTx := e.(*clist.CElement).Value.(*v0tx.MempoolTx)
-		if memTx != nil {
-			mem.RemoveTx(memTx.Tx, e.(*clist.CElement), false)
-			return nil
-		}
+	mem.addRemoveMtx.Lock()
+	defer mem.addRemoveMtx.Unlock()
+	
+	raw_tx_key := C.struct_RawTx{
+		tx:  (*C.uchar)(C.CBytes(txKey[:])),
+		len: (C.ulong)(len(txKey)),
+	}
+	defer C.free(unsafe.Pointer(raw_tx_key.tx))
+
+	if C.clist_mempool_remove_tx_by_key(mem.handle, raw_tx_key)	{
 		return errors.New("transaction not found")
 	}
-	return errors.New("invalid transaction found")
+
+	return nil
 }
 
 func (mem *CListMempool) isFull(txSize int) error {
