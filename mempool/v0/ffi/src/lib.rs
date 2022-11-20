@@ -62,7 +62,7 @@ pub struct MempoolConfig {
     // max_txs_bytes=5MB, mempool will only accept 5 transactions).
     max_txs_bytes: i64,
     ///	Maximum size of a single transaction
-	/// NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
+    /// NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
     max_tx_bytes: i64,
     /// Maximum number of txs in the mempool
     size: i64,
@@ -105,6 +105,20 @@ impl CListMempool {
             // if we removed the last item, make "customer goroutines" wait
             unsafe { rsMakeTxsWaitChan() };
         }
+    }
+
+    /// Returns true if there was an error (the tx was not found)
+    fn remove_tx_by_key(&mut self, tx_hash: &[u8]) -> bool {
+        if self.txs.contains_key(tx_hash) == false {
+            return true;
+        }
+        
+        // `unwrap()` is safe because we made sure that the key exists
+        // FIXME: clean this up
+        let mem_tx = self.txs.get(tx_hash).unwrap();
+        self.remove_tx(mem_tx.tx.clone().as_slice());
+
+        false
     }
 
     fn size(&self) -> usize {
@@ -227,7 +241,7 @@ impl CListMempool {
     fn flush(&mut self) {
         self.txs_bytes = 0;
         self.txs.clear();
-        
+
         unsafe { rsMakeTxsWaitChan() };
     }
 
