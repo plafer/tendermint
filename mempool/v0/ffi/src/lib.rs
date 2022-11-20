@@ -158,6 +158,7 @@ impl CListMempool {
             return true;
         }
 
+        // Sets `res_cb_first_time()` as callback
         unsafe { rsMemProxyAppConnCheckTxAsync(tx.into(), true) };
 
         false

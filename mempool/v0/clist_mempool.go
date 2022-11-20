@@ -644,7 +644,7 @@ func rsMemProxyAppConnCheckTxAsync(rawTx C.RawTx, setCallback C.bool) {
 	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
 
 	if setCallback {
-		// TODO: remove this check
+		// Sanity check
 		if !reflect.DeepEqual(tx, gMem.checkTxTx) {
 			panic(fmt.Sprintf("tx not properly converted. \ntx: %v.\ncheckTxTx: %v", tx, gMem.checkTxTx))
 		}
