@@ -458,7 +458,11 @@ pub struct RawTxs {
 
 impl From<RawTxs> for Vec<&[u8]> {
     fn from(raw_txs: RawTxs) -> Self {
-        let a = unsafe { std::slice::from_raw_parts(raw_txs.txs, raw_txs.len) };
+        let a = if raw_txs.txs == std::ptr::null() {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(raw_txs.txs, raw_txs.len) }
+        };
 
         a.into_iter()
             .map(|raw_tx| unsafe { std::slice::from_raw_parts(raw_tx.tx, raw_tx.len) })

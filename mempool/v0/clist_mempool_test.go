@@ -592,6 +592,8 @@ func TestMempoolTxsBytes(t *testing.T) {
 		assert.IsType(t, mempool.ErrMempoolIsFull{}, err)
 	}
 
+	mp.Free()
+
 	// 6. zero after tx is rechecked and removed due to not being valid anymore
 	app2 := kvstore.NewApplication()
 	cc = proxy.NewLocalClientCreator(app2)

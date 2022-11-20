@@ -560,8 +560,9 @@ func (mem *CListMempool) Update(
 			C.free(unsafe.Pointer(raw_tx.tx))
 		}
 	}()
-
-	var raw_txs = C.struct_RawTxs{
+	
+	var raw_txs_txs *C.struct_RawTx = nil;
+	if len(txs) > 0 {
 		// cgo quote:
 		// >In C, a function argument written as a fixed size array
 		// actually requires a pointer to the first element of the array. C
@@ -572,7 +573,11 @@ func (mem *CListMempool) Update(
 		// In that example, they use data coming from C. However I *think* you
 		// can also do it with a Go slice (i.e. that Go slice data is guaranteed
 		// to be stored sequentially identically to C arrays)
-		txs: &raw_txs_slice[0],
+		raw_txs_txs = &raw_txs_slice[0]
+	}
+
+	var raw_txs = C.struct_RawTxs{
+		txs: raw_txs_txs,
 		len: (C.ulong)(len(raw_txs_slice)),
 	}
 
