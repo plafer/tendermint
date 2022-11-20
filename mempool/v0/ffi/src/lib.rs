@@ -50,6 +50,8 @@ extern "C" {
     /// opens the transaction wait channel, which blocks any goroutine that
     /// needs txs from the mempool
     fn rsMakeTxsWaitChan();
+
+    fn rsComputeProtoSizeForTx(raw_tx: RawTx) -> i64;
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
@@ -94,7 +96,7 @@ impl CListMempool {
         if self.txs.contains_key(&tx_hash) {
             return;
         }
-        
+
         self.txs_bytes += mem_tx.tx.len() as i64;
         self.txs.insert(tx_hash, mem_tx);
 
@@ -211,9 +213,11 @@ impl CListMempool {
         let mut running_size = 0;
         let mut running_gas = 0;
         for (_tx_hash, mem_tx) in self.txs.iter() {
-            // FIXME: this is incorrect. We need to look at the size of all the
-            // current txs once marshalled to protobuf format
-            let temptative_size = running_size + mem_tx.tx.len() as i64;
+            let temptative_size = {
+                let tx_proto_size = unsafe { rsComputeProtoSizeForTx(mem_tx.tx.as_slice().into()) };
+                running_size + tx_proto_size
+            };
+            
             if max_bytes > -1 && temptative_size > max_bytes {
                 break;
             }

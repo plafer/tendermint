@@ -671,3 +671,10 @@ func rsCloseTxsWaitChan() {
 func rsMakeTxsWaitChan() {
 	gMem.txsWaitChan = make(chan struct{})
 }
+
+//export rsComputeProtoSizeForTx
+func rsComputeProtoSizeForTx(rawTx C.RawTx) C.longlong {
+	tx := C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len))
+
+	return C.longlong(types.ComputeProtoSizeForTxs([]types.Tx{tx}))
+}
