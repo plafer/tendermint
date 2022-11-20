@@ -112,7 +112,7 @@ impl CListMempool {
         if self.txs.contains_key(tx_hash) == false {
             return true;
         }
-        
+
         // `unwrap()` is safe because we made sure that the key exists
         // FIXME: clean this up
         let mem_tx = self.txs.get(tx_hash).unwrap();
@@ -425,6 +425,7 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
 /// `tx` must not be stored by the Rust code
 /// Note: I think this will eventually go, as all calls
 /// remove a tx will be coming from rust.
+/// FIXME: Use `RawTx` here instead of `tx` and `tx_len`
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_remove_tx(
     _mempool_handle: Handle,
@@ -432,15 +433,34 @@ pub unsafe extern "C" fn clist_mempool_remove_tx(
     tx_len: usize,
     _remove_from_cache: bool,
 ) {
-    if let Some(ref mut mempool) = MEMPOOL {
-        let tx = std::slice::from_raw_parts(tx, tx_len);
-        mempool.remove_tx(tx);
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
     } else {
         panic!("Mempool not initialized!");
-    }
+    };
+
+    let tx = std::slice::from_raw_parts(tx, tx_len);
+    mempool.remove_tx(tx);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_remove_tx_by_key(
+    _mempool_handle: Handle,
+    raw_tx_hash: RawTx,
+) -> bool {
+    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+        mempool
+    } else {
+        panic!("Mempool not initialized!");
+    };
+
+    let tx_hash: &[u8] = raw_tx_hash.into();
+
+    mempool.remove_tx_by_key(tx_hash)
 }
 
 /// Represents a raw transaction across the go/rust boundary.
+/// FIXME: Rename to `RawSlice`
 #[repr(C)]
 pub struct RawTx {
     tx: *const u8,
