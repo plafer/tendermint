@@ -85,10 +85,20 @@ pub struct CListMempool {
 
 impl CListMempool {
     fn add_tx(&mut self, mem_tx: MempoolTx) {
+        // Our implementation differs slightly than Go's. Actually tendermint's `txsMap` is
+        // slightly broken when no cache is present, and we don't reproduce that here.
+        // In the go canonical go implementation, without a cache, one can add the same tx twice to the mempool.
+        // However, the `txsMap` only points to the last item. Here, we prevent the
+        // tx to be added twice.
+        let tx_hash = hash_tx(&mem_tx.tx);
+        if self.txs.contains_key(&tx_hash) {
+            return;
+        }
+        
         self.txs_bytes += mem_tx.tx.len() as i64;
-        self.txs.insert(hash_tx(&mem_tx.tx), mem_tx);
+        self.txs.insert(tx_hash, mem_tx);
 
-        if self.txs.len() == 1 {
+        if self.size() == 1 {
             // if we just added the first item, unblock any "customer goroutines"
             // that may be waiting
             unsafe { rsCloseTxsWaitChan() };
