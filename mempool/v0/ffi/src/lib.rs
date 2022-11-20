@@ -279,6 +279,12 @@ impl CListMempool {
     }
 
     fn res_cb_recheck(&mut self, check_tx_code: u32, raw_tx: &[u8]) {
+        // Equivalent to the previous `mem.recheckCursor == nil` check
+        // in go's `globalCb`
+        if self.recheck_txs.is_empty() {
+            return;
+        }
+
         while let Some(next_mem_tx) = self.recheck_txs.pop() {
             // FIXME: Improvement: store hashes only in `self.recheck_txs`
             if next_mem_tx.tx.as_slice() == raw_tx {

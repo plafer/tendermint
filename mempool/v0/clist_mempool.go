@@ -60,12 +60,6 @@ type CListMempool struct {
 
 	txsWaitChan chan struct{}
 
-	// Track whether we're rechecking txs.
-	// These are not protected by a mutex and are expected to be mutated in
-	// serial (ie. by abci responses which are called in serial).
-	recheckCursor *clist.CElement // next expected response
-	recheckEnd    *clist.CElement // re-checking stops here
-
 	// Keep a cache of already-seen txs.
 	// This reduces the pressure on the proxyApp.
 	cache mempool.TxCache
@@ -106,8 +100,6 @@ func NewCListMempool(
 	mp := &CListMempool{
 		config:        cfg,
 		proxyAppConn:  proxyAppConn,
-		recheckCursor: nil,
-		recheckEnd:    nil,
 		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
 		txsWaitChan:   make(chan struct{}),
@@ -309,15 +301,13 @@ func (mem *CListMempool) CheckTx(
 // When rechecking, we don't need the peerID, so the recheck callback happens
 // here.
 func (mem *CListMempool) globalCb(req *abci.Request, res *abci.Response) {
-	if mem.recheckCursor == nil {
-		// Q: this is the first time it was called?
-		return
-	}
-
-	mem.metrics.RecheckTimes.Add(1)
 	mem.resCbRecheck(req, res)
 
 	// update metrics
+	// Note: I broke these metrics, since these lines get executed even if
+	// `mem.recheck_txs.is_empty() == false` in Rust
+	// (previously `mem.recheckCursor == nil`)
+	mem.metrics.RecheckTimes.Add(1)
 	mem.metrics.Size.Set(float64(mem.Size()))
 }
 
