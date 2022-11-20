@@ -254,6 +254,10 @@ impl CListMempool {
         gas_wanted: i64,
         peer_id: u16,
     ) {
+        if self.recheck_txs.is_empty() == false {
+            panic!("recheck_txs not empty. This should never happen.");
+        }
+
         if check_tx_code != ABCI_CODE_TYPE_OK || has_post_check_err {
             // We currently don't log or maintain metrics, nor have a cache, so nothing to do here
             return;

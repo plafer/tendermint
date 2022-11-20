@@ -265,6 +265,11 @@ func (mem *CListMempool) CheckTx(
 	mem.checkTxTx = tx
 	mem.checkTxCb = cb
 	mem.checkTxTxInfo = &txInfo
+	defer func() {
+		mem.checkTxTx = nil
+		mem.checkTxCb = nil
+		mem.checkTxTxInfo = nil
+	}()
 
 	raw_tx := C.struct_RawTx{
 		tx:  (*C.uchar)(C.CBytes(tx)),
@@ -284,9 +289,6 @@ func (mem *CListMempool) CheckTx(
 		}
 	}
 
-	mem.checkTxTx = nil
-	mem.checkTxCb = nil
-	mem.checkTxTxInfo = nil
 
 	return err
 }
