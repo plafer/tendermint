@@ -569,8 +569,8 @@ func (mem *CListMempool) Update(
 		rawTxsTxs = &rawTxsSlice[0]
 	}
 
-	var rawTxs = C.struct_RawTxs{
-		txs: rawTxsTxs,
+	var rawTxs = C.struct_GoRawSlices{
+		ptr: rawTxsTxs,
 		len: (C.ulong)(len(rawTxsSlice)),
 	}
 

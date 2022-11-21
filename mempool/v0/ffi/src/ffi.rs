@@ -227,7 +227,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_txs(
 pub unsafe extern "C" fn clist_mempool_update(
     _mempool_handle: Handle,
     height: i64,
-    raw_txs: RawTxs,
+    raw_txs: GoRawSlices,
 ) {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
@@ -334,20 +334,22 @@ impl From<&[u8]> for RawSlice {
     }
 }
 
-/// Transactions that were allocated and owned by Go.
-/// TODO: Rename to `RawGoSlices`
+/// Transactions that were allocated and owned by Go. Note that only the
+/// top-level collection (at location `ptr`) is guaranteed to be owned by Go;
+/// this data structure makes no claim about the ownership of each individual
+/// `RawSlice`
 #[repr(C)]
-pub struct RawTxs {
-    txs: *const RawSlice,
+pub struct GoRawSlices {
+    ptr: *const RawSlice,
     len: usize,
 }
 
-impl From<RawTxs> for Vec<&[u8]> {
-    fn from(raw_txs: RawTxs) -> Self {
-        let a = if raw_txs.txs == std::ptr::null() {
+impl From<GoRawSlices> for Vec<&[u8]> {
+    fn from(raw_txs: GoRawSlices) -> Self {
+        let a = if raw_txs.ptr == std::ptr::null() {
             &[]
         } else {
-            unsafe { std::slice::from_raw_parts(raw_txs.txs, raw_txs.len) }
+            unsafe { std::slice::from_raw_parts(raw_txs.ptr, raw_txs.len) }
         };
 
         a.into_iter()
