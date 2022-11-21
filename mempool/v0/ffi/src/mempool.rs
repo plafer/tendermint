@@ -139,7 +139,7 @@ impl CListMempool {
 
     /// Returns true if there was an error (the tx was not found)
     pub fn remove_tx_by_key(&mut self, tx_hash: &[u8]) -> bool {
-        if self.txs.contains_key(tx_hash) == false {
+        if !self.txs.contains_key(tx_hash) {
             return true;
         }
 
@@ -291,7 +291,7 @@ impl CListMempool {
         gas_wanted: i64,
         peer_id: u16,
     ) {
-        if self.recheck_txs.is_empty() == false {
+        if !self.recheck_txs.is_empty() {
             panic!("recheck_txs not empty. This should never happen.");
         }
 
@@ -355,7 +355,7 @@ impl CListMempool {
             panic!("notified txs available but mempool is empty!")
         }
 
-        if unsafe { rsTxsAvailableEnabled() } && self.notified_txs_available == false {
+        if unsafe { rsTxsAvailableEnabled() } && !self.notified_txs_available {
             self.notified_txs_available = true;
             unsafe { rsNotifyTxsAvailable() };
         }
