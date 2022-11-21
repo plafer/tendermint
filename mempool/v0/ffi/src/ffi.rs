@@ -140,7 +140,7 @@ pub unsafe extern "C" fn clist_mempool_remove_tx(
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_remove_tx_by_key(
     _mempool_handle: Handle,
-    raw_tx_hash: RawTx,
+    raw_tx_hash: RawSlice,
 ) -> bool {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
@@ -183,7 +183,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
         panic!("Mempool not initialized!");
     };
 
-    let txs_to_return: Vec<RawTx> = mempool
+    let txs_to_return: Vec<RawSlice> = mempool
         .reap_max_bytes_max_gas(max_bytes, max_gas)
         .into_iter()
         .map(|mem_tx| mem_tx.tx.as_slice().into())
@@ -208,7 +208,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_txs(
     } else {
         panic!("Mempool not initialized!");
     };
-    let txs_to_return: Vec<RawTx> = mempool
+    let txs_to_return: Vec<RawSlice> = mempool
         .reap_max_txs(max_txs)
         .into_iter()
         .map(|mem_tx| mem_tx.tx.as_slice().into())
@@ -251,7 +251,7 @@ pub unsafe extern "C" fn clist_mempool_flush(_mempool_handle: Handle) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx: RawTx) -> bool {
+pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx: RawSlice) -> bool {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
     } else {
@@ -266,7 +266,7 @@ pub unsafe extern "C" fn clist_mempool_res_cb_first_time(
     _mempool_handle: Handle,
     check_tx_code: u32,
     has_post_check_err: bool,
-    raw_tx: RawTx,
+    raw_tx: RawSlice,
     gas_wanted: i64,
     peer_id: u16,
 ) {
@@ -289,7 +289,7 @@ pub unsafe extern "C" fn clist_mempool_res_cb_first_time(
 pub unsafe extern "C" fn clist_mempool_res_cb_recheck(
     _mempool_handle: Handle,
     check_tx_code: u32,
-    raw_tx: RawTx,
+    raw_tx: RawSlice,
 ) {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
@@ -311,23 +311,23 @@ pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
     MEMPOOL = None;
 }
 
-/// Represents a raw transaction across the go/rust boundary.
-/// FIXME: Rename to `RawSlice`
+/// Represents a borrowed slice across the go/rust boundary.
+/// It must not be stored by the callee passed the return of the function call.
 #[repr(C)]
-pub struct RawTx {
+pub struct RawSlice {
     tx: *const u8,
     len: usize,
 }
 
-impl From<RawTx> for &[u8] {
-    fn from(raw_tx: RawTx) -> Self {
+impl From<RawSlice> for &[u8] {
+    fn from(raw_tx: RawSlice) -> Self {
         unsafe { std::slice::from_raw_parts(raw_tx.tx, raw_tx.len) }
     }
 }
 
-impl From<&[u8]> for RawTx {
+impl From<&[u8]> for RawSlice {
     fn from(tx: &[u8]) -> Self {
-        RawTx {
+        RawSlice {
             tx: tx.as_ptr(),
             len: tx.len(),
         }
@@ -335,10 +335,10 @@ impl From<&[u8]> for RawTx {
 }
 
 /// Transactions that were allocated and owned by Go.
-/// TODO: Rename to `GoRawTxs`
+/// TODO: Rename to `RawGoSlices`
 #[repr(C)]
 pub struct RawTxs {
-    txs: *const RawTx,
+    txs: *const RawSlice,
     len: usize,
 }
 
@@ -360,9 +360,16 @@ impl From<RawTxs> for Vec<&[u8]> {
 /// Must be deallocated from Go with `clist_raw_txs_free`.
 #[repr(C)]
 pub struct RustRawTxs {
-    txs: *const RawTx,
+    txs: *const RawSlice,
     len: usize,
     capacity: usize,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw_txs: RustRawTxs) {
+    let _vec = Vec::from_raw_parts(raw_txs.txs.cast_mut(), raw_txs.len, raw_txs.capacity);
+
+    // _vec dropped and memory freed
 }
 
 /// Raw representation of a `MempoolTx`.
@@ -371,7 +378,7 @@ pub struct RawMempoolTx {
     pub height: i64,
     pub gas_wanted: i64,
     /// Owned by Rust. This should be thought of as a view in the mempool.
-    pub raw_tx: RawTx,
+    pub raw_tx: RawSlice,
     // Owned by Go; should be freed by calling `clist_mempool_raw_mempool_free()`
     pub senders: *const u16,
     pub senders_len: usize,
@@ -379,11 +386,21 @@ pub struct RawMempoolTx {
     pub senders_capacity: usize,
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw_txs: RustRawTxs) {
-    let _vec = Vec::from_raw_parts(raw_txs.txs.cast_mut(), raw_txs.len, raw_txs.capacity);
-
-    // _vec dropped and memory freed
+impl RawMempoolTx {
+    /// Constructs the null representation
+    fn null() -> RawMempoolTx {
+        RawMempoolTx {
+            height: 0,
+            gas_wanted: 0,
+            raw_tx: RawSlice {
+                tx: std::ptr::null(),
+                len: 0,
+            },
+            senders: std::ptr::null(),
+            senders_len: 0,
+            senders_capacity: 00,
+        }
+    }
 }
 
 impl From<&MempoolTx> for RawMempoolTx {
@@ -399,23 +416,6 @@ impl From<&MempoolTx> for RawMempoolTx {
             senders: senders.leak().as_mut_ptr(),
             senders_len,
             senders_capacity,
-        }
-    }
-}
-
-impl RawMempoolTx {
-    /// Constructs the null representation
-    fn null() -> RawMempoolTx {
-        RawMempoolTx {
-            height: 0,
-            gas_wanted: 0,
-            raw_tx: RawTx {
-                tx: std::ptr::null(),
-                len: 0,
-            },
-            senders: std::ptr::null(),
-            senders_len: 0,
-            senders_capacity: 00,
         }
     }
 }

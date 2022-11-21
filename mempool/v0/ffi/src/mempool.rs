@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use linked_hash_map::LinkedHashMap;
 
 use crate::tx::{hash_tx, MempoolTx, PeerId, TxKeyHash};
-use crate::RawTx;
+use crate::RawSlice;
 
 const ABCI_CODE_TYPE_OK: u32 = 0;
 
@@ -22,7 +22,7 @@ extern "C" {
 
     /// calls `mem.postCheck()` function in go.
     /// Returns true if an error occured.
-    fn rsMemPostCheck(tx: RawTx) -> bool;
+    fn rsMemPostCheck(tx: RawSlice) -> bool;
 
     /// calls `mem.proxyAppConn.Error()` function in go.
     /// Returns true if an error occured.
@@ -31,7 +31,7 @@ extern "C" {
     /// calls `mem.proxyAppConn.CheckTxAsync()` function in go, and can set the
     /// callback on the response object.
     /// Returns true if an error occured.
-    fn rsMemProxyAppConnCheckTxAsync(raw_tx: RawTx, set_callback: bool);
+    fn rsMemProxyAppConnCheckTxAsync(raw_tx: RawSlice, set_callback: bool);
 
     /// calls `mem.proxyAppConn.FlushAsync()` function in go
     fn rsMemProxyAppConnFlushAsync();
@@ -44,7 +44,7 @@ extern "C" {
     /// needs txs from the mempool
     fn rsMakeTxsWaitChan();
 
-    fn rsComputeProtoSizeForTx(raw_tx: RawTx) -> i64;
+    fn rsComputeProtoSizeForTx(raw_tx: RawSlice) -> i64;
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
