@@ -15,6 +15,9 @@ pub struct Handle {
 
 /// Creates a new CListMempool.
 /// Currently does not implement any cache.
+///
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_new(
     max_tx_bytes: i64,
@@ -24,7 +27,7 @@ pub unsafe extern "C" fn clist_mempool_new(
     recheck: bool,
     height: i64,
 ) -> Handle {
-    if let Some(_) = MEMPOOL {
+    if MEMPOOL.is_some() {
         // Panicking across an FFI boundary is undefined behavior. However,
         // it'll have to do for this proof of concept :).
         panic!("oops, only one mempool supported at the moment");
@@ -47,6 +50,8 @@ pub unsafe extern "C" fn clist_mempool_new(
     Handle { handle: 0 }
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
     let mempool = if let Some(ref mempool) = MEMPOOL {
@@ -60,6 +65,8 @@ pub unsafe extern "C" fn clist_mempool_size(_mempool_handle: Handle) -> usize {
     mempool.size()
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_size_bytes(_mempool_handle: Handle) -> i64 {
     let mempool = if let Some(ref mempool) = MEMPOOL {
@@ -73,6 +80,8 @@ pub unsafe extern "C" fn clist_mempool_size_bytes(_mempool_handle: Handle) -> i6
     mempool.size_bytes()
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size: i64) -> bool {
     let mempool = if let Some(ref mempool) = MEMPOOL {
@@ -86,7 +95,10 @@ pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size:
     mempool.is_full(tx_size)
 }
 
-/// `tx` must not be stored by the Rust code
+/// # Safety
+/// + The fields in `raw_tx` must conform to the same requirements as `std::slice::from_raw_parts`.
+/// + `raw_tx.ptr` must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_add_tx(
     _mempool_handle: Handle,
@@ -116,6 +128,11 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
 /// `tx` must not be stored by the Rust code
 /// Note: I think this will eventually go, as all calls
 /// remove a tx will be coming from rust.
+///
+/// # Safety
+/// + The fields in `raw_tx` must conform to the same requirements as `std::slice::from_raw_parts`.
+/// + `raw_tx.ptr` must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_remove_tx(
     _mempool_handle: Handle,
@@ -132,6 +149,10 @@ pub unsafe extern "C" fn clist_mempool_remove_tx(
     mempool.remove_tx(tx);
 }
 
+/// # Safety
+/// + The fields in `raw_tx_hash` must conform to the same requirements as `std::slice::from_raw_parts`.
+/// + `raw_tx_hash.ptr` must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_remove_tx_by_key(
     _mempool_handle: Handle,
@@ -148,9 +169,11 @@ pub unsafe extern "C" fn clist_mempool_remove_tx_by_key(
     mempool.remove_tx_by_key(tx_hash)
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_tx_front(_mempool_handle: Handle) -> RawMempoolTx {
-    let mempool = if let Some(ref mut mempool) = MEMPOOL {
+    let mempool = if let Some(ref mempool) = MEMPOOL {
         mempool
     } else {
         panic!("Mempool not initialized!");
@@ -166,6 +189,9 @@ pub unsafe extern "C" fn clist_mempool_tx_front(_mempool_handle: Handle) -> RawM
 /// Does not remove the transactions from the mempool.
 /// Returned transactions will now be owned by Go and must be freed using
 /// `clist_mempool_raw_free()`
+///
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     _mempool_handle: Handle,
@@ -193,6 +219,8 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     }
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_reap_max_txs(
     _mempool_handle: Handle,
@@ -218,6 +246,10 @@ pub unsafe extern "C" fn clist_mempool_reap_max_txs(
     }
 }
 
+/// # Safety
+/// + The fields in `raw_txs`, and each inner `RawSlice`, must conform to the same requirements as `std::slice::from_raw_parts`.
+/// + `raw_txs.ptr`, and all inner `RawSlice.ptr`, must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_update(
     _mempool_handle: Handle,
@@ -234,6 +266,8 @@ pub unsafe extern "C" fn clist_mempool_update(
     mempool.update(height, raw_txs.as_slice());
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_flush(_mempool_handle: Handle) {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
@@ -245,6 +279,10 @@ pub unsafe extern "C" fn clist_mempool_flush(_mempool_handle: Handle) {
     mempool.flush();
 }
 
+/// # Safety
+/// + The fields in `raw_tx` must conform to the same requirements as `std::slice::from_raw_parts`
+/// + `raw_tx.ptr` must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx: RawSlice) -> bool {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
@@ -256,6 +294,10 @@ pub unsafe extern "C" fn clist_mempool_check_tx(_mempool_handle: Handle, raw_tx:
     mempool.check_tx(raw_tx.into())
 }
 
+/// # Safety
+/// + The fields in `raw_tx` must conform to the same requirements as `std::slice::from_raw_parts`
+/// + `raw_tx.ptr` must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_res_cb_first_time(
     _mempool_handle: Handle,
@@ -280,6 +322,10 @@ pub unsafe extern "C" fn clist_mempool_res_cb_first_time(
     )
 }
 
+/// # Safety
+/// + The fields in `raw_tx` must conform to the same requirements as `std::slice::from_raw_parts`
+/// + `raw_tx.ptr` must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_res_cb_recheck(
     _mempool_handle: Handle,
@@ -295,15 +341,17 @@ pub unsafe extern "C" fn clist_mempool_res_cb_recheck(
     mempool.res_cb_recheck(check_tx_code, raw_tx.into())
 }
 
+/// # Safety
+/// Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
-    if let None = MEMPOOL {
-        // Panicking across an FFI boundary is undefined behavior. However,
-        // it'll have to do for this proof of concept :).
-        panic!("Double-free detected!");
-    }
+        if MEMPOOL.is_none() {
+            // Panicking across an FFI boundary is undefined behavior. However,
+            // it'll have to do for this proof of concept :).
+            panic!("Double-free detected!");
+        }
 
-    MEMPOOL = None;
+        MEMPOOL = None;
 }
 
 /// Represents a borrowed slice across the go/rust boundary.
@@ -341,13 +389,13 @@ pub struct GoRawSlices {
 
 impl From<GoRawSlices> for Vec<&[u8]> {
     fn from(raw_txs: GoRawSlices) -> Self {
-        let a = if raw_txs.ptr == std::ptr::null() {
+        let a = if raw_txs.ptr.is_null() {
             &[]
         } else {
             unsafe { std::slice::from_raw_parts(raw_txs.ptr, raw_txs.len) }
         };
 
-        a.into_iter()
+        a.iter()
             .map(|raw_tx| unsafe { std::slice::from_raw_parts(raw_tx.ptr, raw_tx.len) })
             .collect()
     }
@@ -362,6 +410,10 @@ pub struct RustRawSlices {
     capacity: usize,
 }
 
+/// # Safety
+/// + The fields in `raw_txs` must conform to the same requirements as `std::vec::Vec::from_raw_parts`
+/// + `raw_txs.ptr`, and all inner `RawSlice.ptr`, must not be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_raw_slices_free(
     _mempool_handle: Handle,
@@ -420,6 +472,11 @@ impl From<&MempoolTx> for RawMempoolTx {
     }
 }
 
+/// # Safety
+/// + The `senders*` fields in `raw_mem_tx` must conform to the same requirements as `std::vec::Vec::from_raw_parts`
+/// + The fields in `raw_mem_tx.raw_tx` must conform to the same requirements as `std::slice::from_raw_parts`.
+/// + No pointer must be stored passed the return of this function
+/// + Must be called by at most one thread at a time.
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_raw_mempool_tx_free(raw_mem_tx: RawMempoolTx) {
     let _vec = Vec::from_raw_parts(

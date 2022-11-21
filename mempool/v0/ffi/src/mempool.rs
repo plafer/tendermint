@@ -81,7 +81,7 @@ pub struct MempoolConfig {
     // This only accounts for raw transactions (e.g. given 1MB transactions and
     // max_txs_bytes=5MB, mempool will only accept 5 transactions).
     pub max_txs_bytes: i64,
-    ///	Maximum size of a single transaction
+    /// Maximum size of a single transaction
     /// NOTE: the max size of a tx transmitted over the network is {max_tx_bytes}.
     pub max_tx_bytes: i64,
     /// Maximum number of txs in the mempool
