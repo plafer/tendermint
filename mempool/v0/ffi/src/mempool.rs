@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use linked_hash_map::LinkedHashMap;
-use sha2::{digest::{generic_array::GenericArray, typenum::U32}, Sha256, Digest};
+use sha2::{
+    digest::{generic_array::GenericArray, typenum::U32},
+    Digest, Sha256,
+};
 
 use crate::RawSlice;
 
@@ -236,7 +239,7 @@ impl CListMempool {
                 let tx_proto_size = unsafe { rsComputeProtoSizeForTx(mem_tx.tx.as_slice().into()) };
                 running_size + tx_proto_size
             };
-            
+
             if max_bytes > -1 && temptative_size > max_bytes {
                 break;
             }

@@ -1,4 +1,3 @@
-
 use core::ffi::c_int;
 use linked_hash_map::LinkedHashMap;
 use std::collections::HashMap;
@@ -368,7 +367,10 @@ pub struct RustRawSlices {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_raw_slices_free(_mempool_handle: Handle, raw_txs: RustRawSlices) {
+pub unsafe extern "C" fn clist_mempool_raw_slices_free(
+    _mempool_handle: Handle,
+    raw_txs: RustRawSlices,
+) {
     let _vec = Vec::from_raw_parts(raw_txs.ptr.cast_mut(), raw_txs.len, raw_txs.capacity);
 
     // _vec dropped and memory freed
