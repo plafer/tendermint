@@ -434,17 +434,17 @@ func (mem *CListMempool) resCbFirstTime(
 		}
 
 		hasPostCheckError := postCheckErr != nil
-		raw_tx := C.struct_RawSlice{
+		rawTx := C.struct_RawSlice{
 			ptr:  (*C.uchar)(C.CBytes(tx)),
 			len: (C.ulong)(len(tx)),
 		}
-		defer C.free(unsafe.Pointer(raw_tx.ptr))
+		defer C.free(unsafe.Pointer(rawTx.ptr))
 
 		C.clist_mempool_res_cb_first_time(
 			mem.handle,
 			C.uint(r.CheckTx.Code),
 			C.bool(hasPostCheckError),
-			raw_tx,
+			rawTx,
 			C.longlong(r.CheckTx.GasWanted),
 			C.ushort(peerID),
 		)
@@ -465,14 +465,14 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 		mem.recheckResponseCheckTx = r.CheckTx
 
 		tx := req.GetCheckTx().Tx
-		raw_tx := C.struct_RawSlice{
+		rawTx := C.struct_RawSlice{
 			ptr:  (*C.uchar)(C.CBytes(tx)),
 			len: (C.ulong)(len(tx)),
 		}
 
-		C.clist_mempool_res_cb_recheck(mem.handle, C.uint(r.CheckTx.Code), raw_tx)
+		C.clist_mempool_res_cb_recheck(mem.handle, C.uint(r.CheckTx.Code), rawTx)
 
-		C.free(unsafe.Pointer(raw_tx.ptr))
+		C.free(unsafe.Pointer(rawTx.ptr))
 
 		// Workaround: Clean cache
 		mem.recheckResponseCheckTx = nil
@@ -498,7 +498,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 
 	txs := make([]types.Tx, len(rustRawTxsSlice))
 	for i := 0; i < len(txs); i++ {
-		// allocate new memory since `raw_txs` is owned by Rust
+		// allocate new memory since `rustRawTxs` is owned by Rust
 		txs[i] = C.GoBytes(unsafe.Pointer(rustRawTxsSlice[i].ptr), C.int(rustRawTxsSlice[i].len))
 	}
 
@@ -517,7 +517,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 
 	txs := make([]types.Tx, len(rustRawTxsSlice))
 	for i := 0; i < len(txs); i++ {
-		// allocate new memory since `raw_txs` is owned by Rust
+		// allocate new memory since `rustRawTxs` is owned by Rust
 		txs[i] = C.GoBytes(unsafe.Pointer(rustRawTxsSlice[i].ptr), C.int(rustRawTxsSlice[i].len))
 	}
 
