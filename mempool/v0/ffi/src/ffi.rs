@@ -87,14 +87,12 @@ pub unsafe extern "C" fn clist_mempool_is_full(_mempool_handle: Handle, tx_size:
 }
 
 /// `tx` must not be stored by the Rust code
-/// TODO: use `RawTx`
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_add_tx(
     _mempool_handle: Handle,
     height: i64,
     gas_wanted: i64,
-    tx: *const u8,
-    tx_len: usize,
+    raw_tx: RawSlice,
 ) {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
         mempool
@@ -102,7 +100,7 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
         panic!("Mempool not initialized!");
     };
 
-    let tx = std::slice::from_raw_parts(tx, tx_len);
+    let tx = std::slice::from_raw_parts(raw_tx.ptr, raw_tx.len);
     let tx = Vec::from(tx);
 
     let mempool_tx = MempoolTx {
@@ -118,12 +116,10 @@ pub unsafe extern "C" fn clist_mempool_add_tx(
 /// `tx` must not be stored by the Rust code
 /// Note: I think this will eventually go, as all calls
 /// remove a tx will be coming from rust.
-/// FIXME: Use `RawTx` here instead of `tx` and `tx_len`
 #[no_mangle]
 pub unsafe extern "C" fn clist_mempool_remove_tx(
     _mempool_handle: Handle,
-    tx: *const u8,
-    tx_len: usize,
+    raw_tx: RawSlice,
     _remove_from_cache: bool,
 ) {
     let mempool = if let Some(ref mut mempool) = MEMPOOL {
@@ -132,7 +128,7 @@ pub unsafe extern "C" fn clist_mempool_remove_tx(
         panic!("Mempool not initialized!");
     };
 
-    let tx = std::slice::from_raw_parts(tx, tx_len);
+    let tx = std::slice::from_raw_parts(raw_tx.ptr, raw_tx.len);
     mempool.remove_tx(tx);
 }
 

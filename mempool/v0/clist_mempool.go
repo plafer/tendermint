@@ -360,10 +360,13 @@ func (mem *CListMempool) AddTx(memTx *v0tx.MempoolTx) {
 	// and passed to C). Cgo docs confirm that you can pass pointers allocated
 	// in Go to C, as long as C doesn't store them. But I'm not sure about the
 	// type differences between `[]byte` and `uint8_t *`
-	var c_tx = C.CBytes(memTx.Tx)
-	defer C.free(c_tx)
+	rawTx := C.struct_RawSlice{
+		ptr:  (*C.uchar)(C.CBytes(memTx.Tx)),
+		len: (C.ulong)(len(memTx.Tx)),
+	}
+	defer C.free(unsafe.Pointer(rawTx.ptr))
 
-	C.clist_mempool_add_tx(mem.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), (*C.uchar)(c_tx), C.ulong(len(memTx.Tx)))
+	C.clist_mempool_add_tx(mem.handle, C.longlong(memTx.Height), C.longlong(memTx.GasWanted), rawTx)
 
 	// metrics still tracked in go
 	mem.metrics.TxSizeBytes.Observe(float64(len(memTx.Tx)))
@@ -378,10 +381,13 @@ func (mem *CListMempool) RemoveTx(tx types.Tx, elem *clist.CElement, removeFromC
 	mem.addRemoveMtx.Lock()
 	defer mem.addRemoveMtx.Unlock()
 
-	var c_tx = C.CBytes(tx)
-	defer C.free(c_tx)
+	rawTx := C.struct_RawSlice{
+		ptr:  (*C.uchar)(C.CBytes(tx)),
+		len: (C.ulong)(len(tx)),
+	}
+	defer C.free(unsafe.Pointer(rawTx.ptr))
 
-	C.clist_mempool_remove_tx(mem.handle, (*C.uchar)(c_tx), C.ulong(len(tx)), C.bool(removeFromCache))
+	C.clist_mempool_remove_tx(mem.handle, rawTx, C.bool(removeFromCache))
 }
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.
