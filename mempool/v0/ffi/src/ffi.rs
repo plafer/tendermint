@@ -176,7 +176,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     _mempool_handle: Handle,
     max_bytes: i64,
     max_gas: i64,
-) -> RustRawTxs {
+) -> RustRawSlices {
     let mempool = if let Some(ref mempool) = MEMPOOL {
         mempool
     } else {
@@ -191,8 +191,8 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
     let num_txs_to_return = txs_to_return.len();
     let capacity = txs_to_return.capacity();
 
-    RustRawTxs {
-        txs: txs_to_return.leak().as_ptr(),
+    RustRawSlices {
+        ptr: txs_to_return.leak().as_ptr(),
         len: num_txs_to_return,
         capacity,
     }
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn clist_mempool_reap_max_bytes_max_gas(
 pub unsafe extern "C" fn clist_mempool_reap_max_txs(
     _mempool_handle: Handle,
     max_txs: i32,
-) -> RustRawTxs {
+) -> RustRawSlices {
     let mempool = if let Some(ref mempool) = MEMPOOL {
         mempool
     } else {
@@ -216,8 +216,8 @@ pub unsafe extern "C" fn clist_mempool_reap_max_txs(
     let num_txs_to_return = txs_to_return.len();
     let capacity = txs_to_return.capacity();
 
-    RustRawTxs {
-        txs: txs_to_return.leak().as_ptr(),
+    RustRawSlices {
+        ptr: txs_to_return.leak().as_ptr(),
         len: num_txs_to_return,
         capacity,
     }
@@ -359,17 +359,17 @@ impl From<GoRawSlices> for Vec<&[u8]> {
 }
 
 /// Transactions that were allocated and owned by Rust.
-/// Must be deallocated from Go with `clist_raw_txs_free`.
+/// Must be deallocated from Go with `clist_mempool_raw_slices_free`.
 #[repr(C)]
-pub struct RustRawTxs {
-    txs: *const RawSlice,
+pub struct RustRawSlices {
+    ptr: *const RawSlice,
     len: usize,
     capacity: usize,
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn clist_mempool_raw_txs_free(_mempool_handle: Handle, raw_txs: RustRawTxs) {
-    let _vec = Vec::from_raw_parts(raw_txs.txs.cast_mut(), raw_txs.len, raw_txs.capacity);
+pub unsafe extern "C" fn clist_mempool_raw_slices_free(_mempool_handle: Handle, raw_txs: RustRawSlices) {
+    let _vec = Vec::from_raw_parts(raw_txs.ptr.cast_mut(), raw_txs.len, raw_txs.capacity);
 
     // _vec dropped and memory freed
 }

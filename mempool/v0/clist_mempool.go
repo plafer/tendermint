@@ -491,15 +491,15 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
-	rust_raw_txs := C.clist_mempool_reap_max_bytes_max_gas(mem.handle, C.longlong(maxBytes), C.longlong(maxGas))
-	defer C.clist_mempool_raw_txs_free(mem.handle, rust_raw_txs)
+	rustRawTxs := C.clist_mempool_reap_max_bytes_max_gas(mem.handle, C.longlong(maxBytes), C.longlong(maxGas))
+	defer C.clist_mempool_raw_slices_free(mem.handle, rustRawTxs)
 
-	rust_raw_txs_slice := unsafe.Slice(rust_raw_txs.txs, rust_raw_txs.len)
+	rustRawTxsSlice := unsafe.Slice(rustRawTxs.ptr, rustRawTxs.len)
 
-	txs := make([]types.Tx, len(rust_raw_txs_slice))
+	txs := make([]types.Tx, len(rustRawTxsSlice))
 	for i := 0; i < len(txs); i++ {
 		// allocate new memory since `raw_txs` is owned by Rust
-		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].ptr), C.int(rust_raw_txs_slice[i].len))
+		txs[i] = C.GoBytes(unsafe.Pointer(rustRawTxsSlice[i].ptr), C.int(rustRawTxsSlice[i].len))
 	}
 
 	return txs
@@ -510,15 +510,15 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 	mem.updateMtx.RLock()
 	defer mem.updateMtx.RUnlock()
 
-	rust_raw_txs := C.clist_mempool_reap_max_txs(mem.handle, C.int(max))
-	defer C.clist_mempool_raw_txs_free(mem.handle, rust_raw_txs)
+	rustRawTxs := C.clist_mempool_reap_max_txs(mem.handle, C.int(max))
+	defer C.clist_mempool_raw_slices_free(mem.handle, rustRawTxs)
 
-	rust_raw_txs_slice := unsafe.Slice(rust_raw_txs.txs, rust_raw_txs.len)
+	rustRawTxsSlice := unsafe.Slice(rustRawTxs.ptr, rustRawTxs.len)
 
-	txs := make([]types.Tx, len(rust_raw_txs_slice))
+	txs := make([]types.Tx, len(rustRawTxsSlice))
 	for i := 0; i < len(txs); i++ {
 		// allocate new memory since `raw_txs` is owned by Rust
-		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].ptr), C.int(rust_raw_txs_slice[i].len))
+		txs[i] = C.GoBytes(unsafe.Pointer(rustRawTxsSlice[i].ptr), C.int(rustRawTxsSlice[i].len))
 	}
 
 	return txs
