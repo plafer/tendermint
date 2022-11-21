@@ -210,7 +210,7 @@ func (mem *CListMempool) TxsFront() *v0tx.MempoolTx {
 	defer C.clist_mempool_raw_mempool_tx_free(rawMempoolTx)
 
 	var memTx *v0tx.MempoolTx = nil
-	if rawMempoolTx.raw_tx.tx != nil {
+	if rawMempoolTx.raw_tx.ptr != nil {
 		// `rawMempoolTx` is not null, so we can convert it to `MempoolTx`
 		// TODO: pull this out in a function
 		var senders_slice []C.ushort = unsafe.Slice(rawMempoolTx.senders, rawMempoolTx.senders_len)
@@ -222,7 +222,7 @@ func (mem *CListMempool) TxsFront() *v0tx.MempoolTx {
 		memTx = &v0tx.MempoolTx{
 			Height:    int64(rawMempoolTx.height),
 			GasWanted: int64(rawMempoolTx.gas_wanted),
-			Tx:        types.Tx(C.GoBytes(unsafe.Pointer(rawMempoolTx.raw_tx.tx), C.int(rawMempoolTx.raw_tx.len))),
+			Tx:        types.Tx(C.GoBytes(unsafe.Pointer(rawMempoolTx.raw_tx.ptr), C.int(rawMempoolTx.raw_tx.len))),
 			Senders:   senders,
 		}
 	}
@@ -271,15 +271,15 @@ func (mem *CListMempool) CheckTx(
 		mem.checkTxTxInfo = nil
 	}()
 
-	raw_tx := C.struct_RawSlice{
-		tx:  (*C.uchar)(C.CBytes(tx)),
+	rawSlice := C.struct_RawSlice{
+		ptr:  (*C.uchar)(C.CBytes(tx)),
 		len: (C.ulong)(len(tx)),
 	}
-	defer C.free(unsafe.Pointer(raw_tx.tx))
+	defer C.free(unsafe.Pointer(rawSlice.ptr))
 
 	var err error = nil
 
-	if C.clist_mempool_check_tx(mem.handle, raw_tx) {
+	if C.clist_mempool_check_tx(mem.handle, rawSlice) {
 		// FIXME: return proper errors from Rust
 		err = mempool.ErrMempoolIsFull{
 			NumTxs:      0,
@@ -389,13 +389,13 @@ func (mem *CListMempool) RemoveTxByKey(txKey types.TxKey) error {
 	mem.addRemoveMtx.Lock()
 	defer mem.addRemoveMtx.Unlock()
 	
-	raw_tx_key := C.struct_RawSlice{
-		tx:  (*C.uchar)(C.CBytes(txKey[:])),
+	rawSliceKey := C.struct_RawSlice{
+		ptr:  (*C.uchar)(C.CBytes(txKey[:])),
 		len: (C.ulong)(len(txKey)),
 	}
-	defer C.free(unsafe.Pointer(raw_tx_key.tx))
+	defer C.free(unsafe.Pointer(rawSliceKey.ptr))
 
-	if C.clist_mempool_remove_tx_by_key(mem.handle, raw_tx_key)	{
+	if C.clist_mempool_remove_tx_by_key(mem.handle, rawSliceKey)	{
 		return errors.New("transaction not found")
 	}
 
@@ -435,10 +435,10 @@ func (mem *CListMempool) resCbFirstTime(
 
 		hasPostCheckError := postCheckErr != nil
 		raw_tx := C.struct_RawSlice{
-			tx:  (*C.uchar)(C.CBytes(tx)),
+			ptr:  (*C.uchar)(C.CBytes(tx)),
 			len: (C.ulong)(len(tx)),
 		}
-		defer C.free(unsafe.Pointer(raw_tx.tx))
+		defer C.free(unsafe.Pointer(raw_tx.ptr))
 
 		C.clist_mempool_res_cb_first_time(
 			mem.handle,
@@ -466,13 +466,13 @@ func (mem *CListMempool) resCbRecheck(req *abci.Request, res *abci.Response) {
 
 		tx := req.GetCheckTx().Tx
 		raw_tx := C.struct_RawSlice{
-			tx:  (*C.uchar)(C.CBytes(tx)),
+			ptr:  (*C.uchar)(C.CBytes(tx)),
 			len: (C.ulong)(len(tx)),
 		}
 
 		C.clist_mempool_res_cb_recheck(mem.handle, C.uint(r.CheckTx.Code), raw_tx)
 
-		C.free(unsafe.Pointer(raw_tx.tx))
+		C.free(unsafe.Pointer(raw_tx.ptr))
 
 		// Workaround: Clean cache
 		mem.recheckResponseCheckTx = nil
@@ -499,7 +499,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 	txs := make([]types.Tx, len(rust_raw_txs_slice))
 	for i := 0; i < len(txs); i++ {
 		// allocate new memory since `raw_txs` is owned by Rust
-		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].tx), C.int(rust_raw_txs_slice[i].len))
+		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].ptr), C.int(rust_raw_txs_slice[i].len))
 	}
 
 	return txs
@@ -518,7 +518,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 	txs := make([]types.Tx, len(rust_raw_txs_slice))
 	for i := 0; i < len(txs); i++ {
 		// allocate new memory since `raw_txs` is owned by Rust
-		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].tx), C.int(rust_raw_txs_slice[i].len))
+		txs[i] = C.GoBytes(unsafe.Pointer(rust_raw_txs_slice[i].ptr), C.int(rust_raw_txs_slice[i].len))
 	}
 
 	return txs
@@ -539,22 +539,22 @@ func (mem *CListMempool) Update(
 		mem.postCheck = postCheck
 	}
 
-	var raw_txs_slice = make([]C.struct_RawSlice, len(txs))
+	var rawTxsSlice = make([]C.struct_RawSlice, len(txs))
 	for i := 0; i < len(txs); i++ {
-		raw_txs_slice[i] = C.struct_RawSlice{
+		rawTxsSlice[i] = C.struct_RawSlice{
 			// FIXME: I'm not sure if the `CBytes` allocation is needed
-			tx:  (*C.uchar)(C.CBytes(txs[i])),
+			ptr:  (*C.uchar)(C.CBytes(txs[i])),
 			len: (C.ulong)(len(txs[i])),
 		}
 	}
 	defer func() {
 		// cleanup `CBytes` allocations
-		for _, raw_tx := range raw_txs_slice {
-			C.free(unsafe.Pointer(raw_tx.tx))
+		for _, rawTx := range rawTxsSlice {
+			C.free(unsafe.Pointer(rawTx.ptr))
 		}
 	}()
 	
-	var raw_txs_txs *C.struct_RawSlice = nil;
+	var rawTxsTxs *C.struct_RawSlice = nil;
 	if len(txs) > 0 {
 		// cgo quote:
 		// >In C, a function argument written as a fixed size array
@@ -566,15 +566,15 @@ func (mem *CListMempool) Update(
 		// In that example, they use data coming from C. However I *think* you
 		// can also do it with a Go slice (i.e. that Go slice data is guaranteed
 		// to be stored sequentially identically to C arrays)
-		raw_txs_txs = &raw_txs_slice[0]
+		rawTxsTxs = &rawTxsSlice[0]
 	}
 
-	var raw_txs = C.struct_RawTxs{
-		txs: raw_txs_txs,
-		len: (C.ulong)(len(raw_txs_slice)),
+	var rawTxs = C.struct_RawTxs{
+		txs: rawTxsTxs,
+		len: (C.ulong)(len(rawTxsSlice)),
 	}
 
-	C.clist_mempool_update(mem.handle, C.longlong(height), raw_txs)
+	C.clist_mempool_update(mem.handle, C.longlong(height), rawTxs)
 
 	mem.metrics.Size.Set(float64(mem.Size()))
 
@@ -614,10 +614,10 @@ func rsMemPreCheck() C.bool {
 }
 
 //export rsMemPostCheck
-func rsMemPostCheck(rawTx C.RawSlice) C.bool {
+func rsMemPostCheck(rawSlice C.RawSlice) C.bool {
 	// Note: `C.GoBytes` makes a copy of the data, and the new memory is managed by Go
 	// (i.e. garbage collected)
-	tx := C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len))
+	tx := C.GoBytes(unsafe.Pointer(rawSlice.ptr), C.int(rawSlice.len))
 	if gMem.postCheck != nil {
 		return gMem.postCheck(tx, gMem.recheckResponseCheckTx) != nil
 	}
@@ -637,10 +637,10 @@ func rsMemProxyAppConnError() C.bool {
 }
 
 //export rsMemProxyAppConnCheckTxAsync
-func rsMemProxyAppConnCheckTxAsync(rawTx C.RawSlice, setCallback C.bool) {
+func rsMemProxyAppConnCheckTxAsync(rawSlice C.RawSlice, setCallback C.bool) {
 	// Note: `C.GoBytes` makes a copy of the data, and the new memory is managed by Go
 	// (i.e. garbage collected)
-	tx := types.Tx(C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len)))
+	tx := types.Tx(C.GoBytes(unsafe.Pointer(rawSlice.ptr), C.int(rawSlice.len)))
 	reqRes := gMem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx})
 
 	if setCallback {
@@ -673,8 +673,8 @@ func rsMakeTxsWaitChan() {
 }
 
 //export rsComputeProtoSizeForTx
-func rsComputeProtoSizeForTx(rawTx C.RawSlice) C.longlong {
-	tx := C.GoBytes(unsafe.Pointer(rawTx.tx), C.int(rawTx.len))
+func rsComputeProtoSizeForTx(rawSlice C.RawSlice) C.longlong {
+	tx := C.GoBytes(unsafe.Pointer(rawSlice.ptr), C.int(rawSlice.len))
 
 	return C.longlong(types.ComputeProtoSizeForTxs([]types.Tx{tx}))
 }

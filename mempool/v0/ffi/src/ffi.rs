@@ -315,20 +315,20 @@ pub unsafe extern "C" fn clist_mempool_free(_mempool_handle: Handle) {
 /// It must not be stored by the callee passed the return of the function call.
 #[repr(C)]
 pub struct RawSlice {
-    tx: *const u8,
+    ptr: *const u8,
     len: usize,
 }
 
 impl From<RawSlice> for &[u8] {
     fn from(raw_tx: RawSlice) -> Self {
-        unsafe { std::slice::from_raw_parts(raw_tx.tx, raw_tx.len) }
+        unsafe { std::slice::from_raw_parts(raw_tx.ptr, raw_tx.len) }
     }
 }
 
 impl From<&[u8]> for RawSlice {
     fn from(tx: &[u8]) -> Self {
         RawSlice {
-            tx: tx.as_ptr(),
+            ptr: tx.as_ptr(),
             len: tx.len(),
         }
     }
@@ -351,7 +351,7 @@ impl From<RawTxs> for Vec<&[u8]> {
         };
 
         a.into_iter()
-            .map(|raw_tx| unsafe { std::slice::from_raw_parts(raw_tx.tx, raw_tx.len) })
+            .map(|raw_tx| unsafe { std::slice::from_raw_parts(raw_tx.ptr, raw_tx.len) })
             .collect()
     }
 }
@@ -393,7 +393,7 @@ impl RawMempoolTx {
             height: 0,
             gas_wanted: 0,
             raw_tx: RawSlice {
-                tx: std::ptr::null(),
+                ptr: std::ptr::null(),
                 len: 0,
             },
             senders: std::ptr::null(),
