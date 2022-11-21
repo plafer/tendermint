@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::mempool::CListMempool;
 use crate::mempool::MempoolConfig;
-use crate::tx::MempoolTx;
+use crate::mempool::MempoolTx;
 
 static mut MEMPOOL: Option<CListMempool> = None;
 

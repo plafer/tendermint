@@ -5,7 +5,6 @@
 ///! In other words, the go code is expected to guard the access to the FFI
 ///! with a mutex.
 mod mempool;
-mod tx;
 pub mod ffi;
 
 pub use ffi::*;

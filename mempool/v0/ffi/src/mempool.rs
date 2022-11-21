@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use linked_hash_map::LinkedHashMap;
+use sha2::{digest::{generic_array::GenericArray, typenum::U32}, Sha256, Digest};
 
-use crate::tx::{hash_tx, MempoolTx, PeerId, TxKeyHash};
 use crate::RawSlice;
 
 const ABCI_CODE_TYPE_OK: u32 = 0;
@@ -45,6 +45,28 @@ extern "C" {
     fn rsMakeTxsWaitChan();
 
     fn rsComputeProtoSizeForTx(raw_tx: RawSlice) -> i64;
+}
+
+/// Type that key hashes have
+pub type TxKeyHash = GenericArray<u8, U32>;
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct PeerId(pub u16);
+
+#[derive(Clone)]
+pub struct MempoolTx {
+    pub height: i64,
+    pub gas_wanted: i64,
+    pub tx: Vec<u8>,
+    /// TODO: Make this a `HashSet`; the `bool` is redundant
+    pub senders: HashMap<PeerId, bool>,
+}
+
+// TODO: Investigate using std::hash instead
+pub fn hash_tx(tx: &[u8]) -> TxKeyHash {
+    let mut hasher = Sha256::new();
+    hasher.update(tx);
+    hasher.finalize()
 }
 
 /// Rust's representation of go's MempoolConfig (just the parts we need) Note
