@@ -64,7 +64,6 @@ type CListMempool struct {
 	// This reduces the pressure on the proxyApp.
 	cache mempool.TxCache
 
-	logger  log.Logger
 	metrics *mempool.Metrics
 
 	handle C.struct_Handle
@@ -100,7 +99,6 @@ func NewCListMempool(
 	mp := &CListMempool{
 		config:        cfg,
 		proxyAppConn:  proxyAppConn,
-		logger:        log.NewNopLogger(),
 		metrics:       mempool.NopMetrics(),
 		txsWaitChan:   make(chan struct{}),
 		handle:        (C.struct_Handle)(
@@ -138,7 +136,7 @@ func (mem *CListMempool) EnableTxsAvailable() {
 
 // SetLogger sets the Logger.
 func (mem *CListMempool) SetLogger(l log.Logger) {
-	mem.logger = l
+	// nothing
 }
 
 // WithPreCheck sets a filter for the mempool to reject a tx if f(tx) returns
